@@ -1,0 +1,236 @@
+"""把 Win 本地库存推给库存图记（Cloudflare Worker 的 PUT /api/stock-sync）。
+
+只推「款号 · 色号 · 剩余卷数」，不带客户、金额、订单任何信息。
+
+分批推送
+--------
+以前是一次 PUT 全部，Worker 单次最多收 1000 条，超了直接 400 拒收，
+而这边只把错误写进日志——结果就是客户看到的缺货标记会在某一天
+悄悄停止更新，没人知道。现在改成分批：
+
+    seq=0 开始 → 每批 BATCH_SIZE 条 → 最后一批 final=true 时线上一次性切换
+
+线上推到一半不会被客户看到，要么是上一次的完整结果，要么是这一次的完整结果。
+条目总数没有上限了。
+
+失败看得见
+----------
+每次推送的结果写进 data/stock-sync-status.json：
+上次成功时间、上次成功条数、连续失败次数、最后一次错误。
+销售软件的 /api/stock/sync-status 可以读它，
+图库后台 /admin/stock-sync 也能看到线上那一侧的状态。
+
+配置（任选其一，环境变量优先）：
+    环境变量 STOCK_SYNC_URL、STOCK_SYNC_TOKEN
+    或 data/stock-sync.json：{"url": "https://…/api/stock-sync", "token": "…"}（data/ 不进 git）
+没配置就什么都不做。
+
+手动推一次：python stock_push.py
+"""
+import json
+import os
+import threading
+import time
+import urllib.error
+import urllib.request
+import uuid
+from datetime import datetime
+from pathlib import Path
+
+import stock_store
+
+BATCH_SIZE = 500          # 线上单批上限 1000，留一半余量
+MAX_ATTEMPTS = 4          # 每批最多试 4 次
+RETRY_BACKOFF = (2, 5, 12)  # 第 1/2/3 次失败后分别等多久（秒）
+STATUS_FILE = "stock-sync-status.json"
+
+_state_lock = threading.Lock()
+_running = False
+_again = False
+
+
+def load_config(data_dir):
+    url = os.environ.get("STOCK_SYNC_URL", "").strip()
+    token = os.environ.get("STOCK_SYNC_TOKEN", "").strip()
+    if not (url and token):
+        path = Path(data_dir) / "stock-sync.json"
+        if path.exists():
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            url = url or str(doc.get("url", "")).strip()
+            token = token or str(doc.get("token", "")).strip()
+    return url, token
+
+
+def build_items(stock_db, sales_rows):
+    return [{"style": level["style"], "color": level["color"], "rolls": level["rolls"]}
+            for level in stock_store.stock_levels(stock_db, sales_rows)]
+
+
+def read_status(data_dir):
+    path = Path(data_dir) / STATUS_FILE
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+
+
+def write_status(data_dir, **fields):
+    path = Path(data_dir) / STATUS_FILE
+    status = read_status(data_dir)
+    status.update(fields)
+    status["at"] = datetime.now().isoformat(timespec="seconds")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass       # 状态文件写不了不能连累推送本身
+    return status
+
+
+def _put(url, token, payload, timeout):
+    request = urllib.request.Request(
+        url, data=json.dumps(payload).encode("utf-8"), method="PUT",
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json",
+                 "User-Agent": "textil134-sales-stock-push"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _put_with_retry(url, token, payload, timeout, log):
+    """推一批，失败重试。返回 (结果, 是否要求从头重来)。"""
+    last_error = None
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            return _put(url, token, payload, timeout), False
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", "replace")[:300]
+            last_error = "HTTP %d：%s" % (exc.code, body)
+            # 409 = 线上认为这一轮已失效，重试同一批没有意义，要从 seq=0 重来
+            if exc.code == 409:
+                return None, True
+            # 4xx 是我们发的数据有问题，重试也一样，直接失败
+            if 400 <= exc.code < 500 and exc.code not in (408, 429):
+                break
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            last_error = "%s: %s" % (type(exc).__name__, exc)
+        if attempt < MAX_ATTEMPTS - 1:
+            wait = RETRY_BACKOFF[min(attempt, len(RETRY_BACKOFF) - 1)]
+            log({"retry": attempt + 1, "wait": wait, "error": last_error})
+            time.sleep(wait)
+    raise RuntimeError(last_error or "推送失败")
+
+
+def push_once(stock_db, sales_rows, data_dir, timeout=30, log=None):
+    log = log or (lambda entry: None)
+    url, token = load_config(data_dir)
+    if not url or len(token) < 24:
+        return {"skipped": "未配置库存同步"}
+    if not url.startswith("https://") and not url.startswith("http://127.0.0.1"):
+        raise ValueError("STOCK_SYNC_URL 必须是 https 地址")
+    # 库文件不存在（数据目录配错、新机器）时不推，免得把线上标记整表清空
+    if not Path(stock_db).exists():
+        return {"skipped": "还没有导入装箱单"}
+
+    items = build_items(stock_db, sales_rows)
+    if not items:
+        # 线上也会拒绝空同步，这里提前挡掉，免得白跑一趟还把状态写成失败
+        return {"skipped": "本地一条库存都没有，不推（避免清空线上标记）"}
+
+    for restart in range(2):        # 收到 409 时整轮重来一次
+        sync_id = uuid.uuid4().hex
+        batches = [items[i:i + BATCH_SIZE] for i in range(0, len(items), BATCH_SIZE)]
+        try:
+            for seq, chunk in enumerate(batches):
+                payload = {"syncId": sync_id, "seq": seq,
+                           "final": seq == len(batches) - 1, "items": chunk}
+                result, need_restart = _put_with_retry(url, token, payload, timeout, log)
+                if need_restart:
+                    log({"restart": restart + 1, "reason": "线上要求从头重推"})
+                    break
+                if payload["final"]:
+                    status = write_status(data_dir, ok=True, last_ok_at=result.get("updatedAt"),
+                                          last_ok_items=result.get("count", len(items)),
+                                          batches=len(batches), failures=0, error="")
+                    return {"ok": True, "count": result.get("count", len(items)),
+                            "batches": len(batches), "syncId": sync_id,
+                            "updatedAt": result.get("updatedAt"), "status": status}
+            else:
+                break
+        except Exception as exc:
+            failures = int(read_status(data_dir).get("failures") or 0) + 1
+            write_status(data_dir, ok=False, failures=failures, error=str(exc),
+                         batches=len(batches), attempted_items=len(items))
+            raise
+
+    failures = int(read_status(data_dir).get("failures") or 0) + 1
+    message = "线上连续要求重推，放弃这一轮"
+    write_status(data_dir, ok=False, failures=failures, error=message, attempted_items=len(items))
+    raise RuntimeError(message)
+
+
+def _log(log_file, entry):
+    log_file = Path(log_file)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    entry = dict(entry, at=datetime.now().isoformat(timespec="seconds"))
+    with log_file.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def trigger(stock_db, load_sales, data_dir, log_file, reason):
+    """后台推送。正在推时再来的请求合并成推完后再推一次（用最新数据）。"""
+    global _running, _again
+    with _state_lock:
+        if _running:
+            _again = True
+            return
+        _running = True
+
+    def worker():
+        global _running, _again
+        while True:
+            try:
+                result = push_once(stock_db, load_sales(), data_dir,
+                                   log=lambda entry: _log(log_file, dict(entry, reason=reason)))
+                if not result.get("skipped"):  # 没配置时每单都会跳过，不记，免得日志越写越大
+                    _log(log_file, {"reason": reason, "result": result})
+            except Exception as exc:
+                # 失败一定要留痕：日志 + 状态文件（状态文件在 push_once 里已经写了）
+                _log(log_file, {"reason": reason, "error": str(exc), "level": "ERROR"})
+            with _state_lock:
+                if not _again:
+                    _running = False
+                    return
+                _again = False
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def read_sales(data_dir):
+    from reliability_store import read_document
+    rows = read_document(Path(data_dir) / "sales.sqlite3", "sales.json", [])
+    return [row for row in rows if isinstance(row, dict) and not row.get("deleted")] if isinstance(rows, list) else []
+
+
+def sync_health(data_dir, stale_hours=6):
+    """给界面用：现在这套同步到底健不健康。"""
+    status = read_status(data_dir)
+    last_ok = status.get("last_ok_at")
+    age_hours = None
+    if last_ok:
+        try:
+            age_hours = (datetime.now() - datetime.fromisoformat(last_ok.replace("Z", ""))).total_seconds() / 3600
+        except ValueError:
+            age_hours = None
+    healthy = bool(status.get("ok")) and age_hours is not None and age_hours <= stale_hours
+    return {"healthy": healthy, "stale": age_hours is None or age_hours > stale_hours,
+            "age_hours": None if age_hours is None else round(age_hours, 2), **status}
+
+
+if __name__ == "__main__":
+    # 不 import server（导入时会初始化数据目录等），按 server.py 同样的规则找数据目录
+    data_dir = Path(os.environ.get("SALES_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
+    result = push_once(data_dir / "stock.sqlite3", read_sales(data_dir), data_dir,
+                       log=lambda entry: print("  ...", json.dumps(entry, ensure_ascii=False)))
+    print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -1,0 +1,852 @@
+diff --git a/public/app.css b/public/app.css
+index 378d20a..4d9783a 100644
+--- a/public/app.css
++++ b/public/app.css
+@@ -1019,3 +1019,101 @@ body.viewer-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hi
+   .loc-row { grid-template-columns: 24px 1fr; }
+   .loc-cat { display: none; }
+ }
++
++/* ---------- 库存同步状态 ---------- */
++.sync-banner { display: flex; flex-direction: column; gap: .25rem; padding: 1rem 1.15rem; border-radius: 12px; margin-bottom: 1rem; }
++.sync-banner strong { font-size: 1.1rem; }
++.sync-banner--good { background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; }
++.sync-banner--warn { background: #fff7ed; border: 1px solid #fed7aa; color: #7c2d12; }
++.sync-banner--bad  { background: #fef2f2; border: 1px solid #fecaca; color: #7f1d1d; }
++.sync-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; margin-bottom: 1rem; }
++.sync-grid > div { padding: .75rem .9rem; border: 1px solid #e6e9ee; border-radius: 10px; }
++.sync-grid small { display: block; color: #6b7280; font-size: .8rem; margin-bottom: .2rem; }
++.sync-grid b { font-size: 1.05rem; word-break: break-all; }
++.sync-error { background: #fef2f2; color: #7f1d1d; padding: .7rem .9rem; border-radius: 10px; }
++
++/* ---------- 拍照找货 / 拣货篮 ---------- */
++.find-page { max-width: 980px; margin: 0 auto; padding: 1rem; }
++.find-link { font-weight: 700; }
++.find-customer { display: flex; gap: .75rem; align-items: flex-end; flex-wrap: wrap;
++  padding: .9rem 1.1rem; background: #f4f6f9; border-radius: 12px; margin-bottom: 1rem; }
++.find-customer label { flex: 1 1 220px; margin: 0; display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; font-weight: 600; }
++.find-customer input { min-height: 44px; padding: .5rem .7rem; border: 1px solid #d8dce2; border-radius: 8px; font: inherit; }
++
++.find-step { margin-bottom: 1.6rem; }
++.find-step h2 { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; font-size: 1.15rem; margin-bottom: .6rem; }
++.find-step h2 small { font-weight: 400; color: #6b7280; font-size: .85rem; }
++
++.chips { display: flex; flex-wrap: wrap; gap: .5rem; }
++.chip { display: inline-flex; align-items: center; gap: .35rem; min-height: 44px; padding: .5rem 1rem;
++  border: 1px solid #d8dce2; border-radius: 99px; background: #fff; color: #111418;
++  text-decoration: none; font-weight: 600; }
++.chip small { color: #9aa1ab; font-weight: 400; }
++.chip.is-on { background: #111418; border-color: #111418; color: #fff; }
++.chip.is-on small { color: #9aa1ab; }
++
++.find-upload { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap;
++  padding: 1rem; border: 2px dashed #d8dce2; border-radius: 12px; }
++.find-upload input[type=file] { flex: 1 1 240px; }
++
++.find-result { display: grid; grid-template-columns: 260px 1fr; gap: 1.25rem; margin-bottom: 1.6rem;
++  padding: 1.1rem; background: #f4f6f9; border-radius: 14px; }
++.find-shot img { width: 100%; border-radius: 10px; display: block; }
++.find-shot small { display: block; margin-top: .4rem; color: #6b7280; font-size: .82rem; }
++.find-cands { display: flex; flex-direction: column; gap: .6rem; }
++.find-warn { background: #fff7ed; border: 1px solid #fed7aa; color: #7c2d12; padding: .8rem 1rem; border-radius: 10px; margin: 0; }
++.find-ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; padding: .8rem 1rem; border-radius: 10px; }
++
++.cand { display: grid; grid-template-columns: 76px 1fr auto; gap: .9rem; align-items: center;
++  padding: .7rem; background: #fff; border: 1px solid #e6e9ee; border-radius: 12px; margin: 0; }
++.cand-imgs img { width: 76px; height: 76px; object-fit: cover; border-radius: 8px; display: block; }
++.cand-noimg { display: grid; place-items: center; width: 76px; height: 76px; border-radius: 8px;
++  background: #f4f6f9; color: #9aa1ab; font-size: .72rem; }
++.cand-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
++.cand-body strong { font-size: 1.1rem; }
++.cand-score { align-self: flex-start; padding: .1rem .5rem; border-radius: 99px; font-size: .8rem; font-weight: 700; }
++.cand-score--high { background: #dcfce7; color: #14532d; }
++.cand-score--mid  { background: #fef3c7; color: #78350f; }
++.cand-score--low  { background: #f1f5f9; color: #475569; }
++.cand-place { font-size: .9rem; }
++.no-place { color: #b45309; font-style: normal; font-weight: 600; }
++.cand-actions { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
++
++.findqty { display: inline-flex; align-items: center; gap: .2rem; }
++.findqty .qty-btn { width: 38px; height: 38px; padding: 0; border: 1px solid #d8dce2; border-radius: 8px;
++  background: #fff; font-size: 1.2rem; line-height: 1; cursor: pointer; }
++.findqty .qty-input { width: 54px; min-height: 38px; margin: 0; padding: .2rem; text-align: center;
++  font-weight: 700; font-variant-numeric: tabular-nums; border: 1px solid #d8dce2; border-radius: 8px; }
++
++.find-search { display: flex; gap: .5rem; margin-bottom: .9rem; }
++.find-search input { flex: 1 1 auto; min-height: 44px; padding: .5rem .7rem; border: 1px solid #d8dce2; border-radius: 8px; font: inherit; }
++.manual-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .7rem; }
++.manual-card { display: flex; flex-direction: column; gap: .4rem; align-items: flex-start;
++  padding: .7rem; background: #fff; border: 1px solid #e6e9ee; border-radius: 12px; margin: 0; }
++.manual-card img, .manual-card .cand-noimg { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; }
++.manual-card strong { font-size: 1rem; }
++
++.cart-rows { display: flex; flex-direction: column; gap: .6rem; margin: 1rem 0; }
++.cart-row { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap;
++  padding: .75rem; background: #fff; border: 1px solid #e6e9ee; border-radius: 12px; }
++.cart-row.is-missing { background: #fffbeb; border-color: #fde68a; }
++.cart-shot { width: 68px; height: 68px; object-fit: cover; border-radius: 8px; flex: 0 0 68px; }
++.cart-shot--empty { display: grid; place-items: center; background: #f4f6f9; color: #9aa1ab; font-size: .72rem; }
++.cart-main { flex: 1 1 180px; display: flex; flex-direction: column; gap: .1rem; }
++.cart-fix { display: flex; gap: .4rem; align-items: center; margin: 0; flex-wrap: wrap; }
++.cart-fix input { width: 96px; min-height: 38px; padding: .3rem .5rem; border: 1px solid #d8dce2; border-radius: 8px; font: inherit; }
++.cart-del { margin: 0; }
++.cart-del .link-button { font-size: 1.3rem; color: #9aa1ab; }
++.cart-send { display: flex; flex-direction: column; gap: .8rem; align-items: flex-start;
++  padding: 1.1rem; background: #f4f6f9; border-radius: 12px; margin: 1.2rem 0; }
++.cart-send label { margin: 0; display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; font-weight: 600; }
++.cart-send input[name=customer] { min-height: 44px; padding: .5rem .7rem; border: 1px solid #d8dce2; border-radius: 8px; font: inherit; min-width: 220px; }
++.cart-confirm { flex-direction: row !important; align-items: center; gap: .5rem; font-weight: 400; }
++.button--big { min-height: 56px; padding: .8rem 2rem; font-size: 1.05rem; }
++
++@media (max-width: 720px) {
++  .find-result { grid-template-columns: 1fr; }
++  .cand { grid-template-columns: 64px 1fr; }
++  .cand-actions { grid-column: 1 / -1; }
++  .cand-imgs img, .cand-noimg { width: 64px; height: 64px; }
++}
+diff --git a/public/find.js b/public/find.js
+new file mode 100644
+index 0000000..70213b8
+--- /dev/null
++++ b/public/find.js
+@@ -0,0 +1,16 @@
++// 拍照找货页 / 拣货篮页的卷数加减。
++// 客人常常要 2 卷 3 卷，所以点 − ＋ 就行，不用弹键盘；
++// 中间的数字也能直接打，应付偶尔要 20 卷的情况。
++(function () {
++  'use strict';
++  document.addEventListener('click', function (event) {
++    var step = event.target.closest('[data-qty-step]');
++    if (!step) return;
++    event.preventDefault();
++    var input = step.parentNode.querySelector('.qty-input');
++    if (!input) return;
++    var value = Number(String(input.value).replace(',', '.'));
++    if (!isFinite(value) || value <= 0) value = 1;
++    input.value = Math.max(1, Math.round((value + Number(step.dataset.qtyStep)) * 1000) / 1000);
++  });
++})();
+diff --git a/src/worker.js b/src/worker.js
+index 576f8d0..ebaad4c 100644
+--- a/src/worker.js
++++ b/src/worker.js
+@@ -157,6 +157,27 @@ function ensureSchema(env) {
+         updated_at TEXT NOT NULL,
+         PRIMARY KEY(style, color)
+       )`).run();
++      // 分批同步用的暂存表：推完最后一批才一次性切换到 stock_level
++      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS stock_level_staging (
++        sync_id TEXT NOT NULL,
++        style TEXT NOT NULL COLLATE NOCASE,
++        color INTEGER NOT NULL,
++        rolls REAL NOT NULL,
++        PRIMARY KEY(sync_id, style, color)
++      )`).run();
++      // 同步状态：失败要看得见，不能悄悄停掉客户的缺货标记
++      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS stock_sync_state (
++        id INTEGER PRIMARY KEY CHECK (id = 1),
++        sync_id TEXT,
++        status TEXT NOT NULL DEFAULT 'idle',
++        batches INTEGER NOT NULL DEFAULT 0,
++        items INTEGER NOT NULL DEFAULT 0,
++        started_at TEXT,
++        finished_at TEXT,
++        last_ok_at TEXT,
++        last_ok_items INTEGER NOT NULL DEFAULT 0,
++        last_error TEXT NOT NULL DEFAULT ''
++      )`).run();
+       // 货位：绑定「款号」，不绑色号、不绑单张图片。
+       // 一个款号的布放在一起，搬货改一次就够（见 style_location 注释）。
+       await env.DB.prepare(`CREATE TABLE IF NOT EXISTS style_location (
+@@ -179,6 +200,22 @@ function ensureSchema(env) {
+         changed_by INTEGER
+       )`).run();
+       await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_location_change_code ON style_location_change(code, id DESC)').run();
++      // 拍照找货的拣货篮。注意【不存货位】——货位每次现查 style_location，
++      // 这样搬完货篮子里的位置自动就是新的。
++      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pick_cart_item (
++        id INTEGER PRIMARY KEY AUTOINCREMENT,
++        user_id INTEGER NOT NULL,
++        customer_label TEXT NOT NULL DEFAULT '',
++        code TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
++        color TEXT NOT NULL DEFAULT '',
++        qty REAL NOT NULL DEFAULT 1,
++        photo_key TEXT NOT NULL DEFAULT '',
++        match_score REAL,
++        source TEXT NOT NULL DEFAULT 'manual',
++        note TEXT NOT NULL DEFAULT '',
++        created_at TEXT NOT NULL
++      )`).run();
++      await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_cart_user ON pick_cart_item(user_id, id)').run();
+       for (const sql of [
+         'ALTER TABLE stock_marker ADD COLUMN color_region_id INTEGER',
+         "ALTER TABLE product ADD COLUMN pattern TEXT NOT NULL DEFAULT ''",
+@@ -388,27 +425,178 @@ ${unplaced.length ? `<section><h3>待校准 · 找不到对应色号的颜色区
+ <form class="stock-manual" id="stock-manual-form"><h3>手动录入（测试或临时用）</h3><label>款号<input name="style" placeholder="YXS10284" autocomplete="off" required></label><label>色号<input name="color" inputmode="numeric" placeholder="5" required></label><label>剩余卷数<input name="rolls" inputmode="decimal" placeholder="0"></label><button class="button button--dark button--small">保存</button><small>卷数留空 = 删除这一条。销售软件同步过来后，以销售软件为准。</small></form>
+ </div></details>`;
+ }
++// 分批库存同步。
++//
++// 旧做法是一次 PUT 全表，超过 1000 条 Worker 直接 400 拒收，
++// 而销售软件那边只把错误写进日志——结果就是客户看到的缺货标记
++// 会在某一天悄悄停止更新，而且没人知道。这里改掉那个隐患。
++//
++// 新做法：
++//   seq=0 开始一次同步 → 每批写进暂存表 → final=true 时一次性切换到正式表
++// 客户永远看到的是完整的上一次结果，不会看到同步到一半的状态。
++// 每次同步的结果（成功/失败/条数/错误）记在 stock_sync_state，
++// 后台 /admin/stock-sync 能看到，失败不会没声音。
++//
++// 兼容旧版销售软件：不带 syncId 的请求当成「一批就是全部」处理。
++
++const SYNC_BATCH_LIMIT = 1000;
++
++async function syncState(env) {
++  return await first(env, 'SELECT * FROM stock_sync_state WHERE id=1');
++}
++
++async function writeSyncState(env, fields) {
++  const current = await syncState(env) || {};
++  const merged = {
++    sync_id: current.sync_id ?? null, status: current.status ?? 'idle',
++    batches: current.batches ?? 0, items: current.items ?? 0,
++    started_at: current.started_at ?? null, finished_at: current.finished_at ?? null,
++    last_ok_at: current.last_ok_at ?? null, last_ok_items: current.last_ok_items ?? 0,
++    last_error: current.last_error ?? '', ...fields
++  };
++  await run(env, `INSERT INTO stock_sync_state
++    (id,sync_id,status,batches,items,started_at,finished_at,last_ok_at,last_ok_items,last_error)
++    VALUES(1,?,?,?,?,?,?,?,?,?)
++    ON CONFLICT(id) DO UPDATE SET sync_id=excluded.sync_id,status=excluded.status,batches=excluded.batches,
++      items=excluded.items,started_at=excluded.started_at,finished_at=excluded.finished_at,
++      last_ok_at=excluded.last_ok_at,last_ok_items=excluded.last_ok_items,last_error=excluded.last_error`,
++    merged.sync_id, merged.status, merged.batches, merged.items, merged.started_at,
++    merged.finished_at, merged.last_ok_at, merged.last_ok_items, String(merged.last_error).slice(0, 500));
++  return merged;
++}
++
+ async function stockSync(request, env) {
+   const token = String(env.STOCK_SYNC_TOKEN || '');
+   if (token.length < 24) return json({error:'库存同步未启用'}, 503);
+   const given = enc.encode(String(request.headers.get('Authorization') || '')), expected = enc.encode(`Bearer ${token}`);
+   if (given.length !== expected.length || !crypto.subtle.timingSafeEqual(given, expected)) return json({error:'无权限'}, 401);
++
+   let body; try { body = await request.json(); } catch { return json({error:'格式错误'}, 400); }
+   const items = Array.isArray(body?.items) ? body.items : null;
+   if (!items) return json({error:'缺少 items'}, 400);
+-  if (items.length > 1000) return json({error:'条目过多'}, 400);
++  if (items.length > SYNC_BATCH_LIMIT)
++    return json({error:`单批最多 ${SYNC_BATCH_LIMIT} 条，请分批推送`, batchLimit:SYNC_BATCH_LIMIT}, 400);
++
++  // 不带 syncId = 旧版销售软件，一批就是全部
++  const legacy = !body?.syncId;
++  const syncId = legacy ? `legacy-${Date.now()}` : String(body.syncId).slice(0, 64);
++  const seq = legacy ? 0 : Math.max(0, Number(body.seq) || 0);
++  const final = legacy ? true : Boolean(body.final);
++
+   const clean = new Map();
+   for (const item of items) {
+-    const style = String(item?.style || '').trim().toUpperCase(), color = Number(item?.color), rolls = Number(item?.rolls);
+-    if (!/^[A-Z]{2,4}\d{4,6}$/.test(style) || !Number.isInteger(color) || color < 1 || color > 99 || !Number.isFinite(rolls)) return json({error:`条目无效：${style} ${item?.color}`}, 400);
++    const style = String(item?.style || '').trim().toUpperCase();
++    const color = Number(item?.color), rolls = Number(item?.rolls);
++    if (!/^[A-Z]{2,4}\d{4,6}$/.test(style) || !Number.isInteger(color) || color < 1 || color > 99 || !Number.isFinite(rolls)) {
++      const message = `条目无效：${style} ${item?.color}`;
++      await writeSyncState(env, {status:'failed', finished_at:now(), last_error:message});
++      return json({error:message}, 400);
++    }
+     clean.set(`${style}#${color}`, {style, color, rolls});
+   }
++
+   const stamp = now();
+-  // 推来的是完整状态：整表替换，重复推送不会出错
+-  const statements = [env.DB.prepare('DELETE FROM stock_level')];
+-  for (const level of clean.values()) statements.push(env.DB.prepare('INSERT INTO stock_level(style,color,rolls,updated_at) VALUES(?,?,?,?)').bind(level.style, level.color, level.rolls, stamp));
+-  await env.DB.batch(statements);
+-  return json({ok:true, count:clean.size, updatedAt:stamp});
++  try {
++    if (seq === 0) {
++      // 新一轮开始：清掉暂存表（含上次没推完就断掉的残留）
++      await run(env, 'DELETE FROM stock_level_staging');
++      await writeSyncState(env, {sync_id:syncId, status:'running', batches:0, items:0,
++        started_at:stamp, finished_at:null, last_error:''});
++    } else {
++      const state = await syncState(env);
++      if (!state || state.sync_id !== syncId || state.status !== 'running')
++        return json({error:'这一轮同步已经失效，请从 seq=0 重新开始', restart:true}, 409);
++    }
++
++    if (clean.size) {
++      const rows = [...clean.values()];
++      // D1 的 batch 一次别塞太多语句
++      for (let i = 0; i < rows.length; i += 100) {
++        await env.DB.batch(rows.slice(i, i + 100).map(level =>
++          env.DB.prepare('INSERT OR REPLACE INTO stock_level_staging(sync_id,style,color,rolls) VALUES(?,?,?,?)')
++            .bind(syncId, level.style, level.color, level.rolls)));
++      }
++    }
++
++    const state = await syncState(env);
++    const batches = (state?.batches || 0) + 1;
++    const staged = await first(env, 'SELECT COUNT(*) n FROM stock_level_staging WHERE sync_id=?', syncId);
++    const stagedCount = Number(staged?.n) || 0;
++
++    if (!final) {
++      await writeSyncState(env, {sync_id:syncId, status:'running', batches, items:stagedCount});
++      return json({ok:true, syncId, seq, batches, staged:stagedCount, final:false});
++    }
++
++    // 最后一批：切换。空结果绝不允许清空正式表——
++    // 否则销售软件出一次问题，客户就会看到所有货都变成「有货」。
++    if (stagedCount === 0) {
++      await writeSyncState(env, {status:'failed', finished_at:now(),
++        last_error:'这一轮一条都没收到，拒绝清空线上库存标记'});
++      return json({error:'这一轮一条都没收到，拒绝清空线上库存标记'}, 400);
++    }
++
++    await env.DB.batch([
++      env.DB.prepare('DELETE FROM stock_level'),
++      env.DB.prepare(`INSERT INTO stock_level(style,color,rolls,updated_at)
++        SELECT style,color,rolls,? FROM stock_level_staging WHERE sync_id=?`).bind(stamp, syncId),
++      env.DB.prepare('DELETE FROM stock_level_staging')
++    ]);
++    await writeSyncState(env, {sync_id:syncId, status:'ok', batches, items:stagedCount,
++      finished_at:stamp, last_ok_at:stamp, last_ok_items:stagedCount, last_error:''});
++    return json({ok:true, syncId, batches, count:stagedCount, updatedAt:stamp, final:true});
++  } catch (error) {
++    await writeSyncState(env, {status:'failed', finished_at:now(), last_error:String(error?.message || error)});
++    throw error;
++  }
++}
++
++// 库存同步状态页。客户缺货标记不更新时，第一个该看的就是这里。
++async function stockSyncPage(env, session) {
++  const state = await syncState(env);
++  const live = await first(env, 'SELECT COUNT(*) n, MAX(updated_at) at FROM stock_level');
++  const stagingLeft = await first(env, 'SELECT COUNT(*) n FROM stock_level_staging');
++
++  const lastOk = state?.last_ok_at || '';
++  const ageHours = lastOk ? (Date.now() - Date.parse(lastOk)) / 3600000 : null;
++  const stale = ageHours === null || ageHours > 6;
++  const failed = state?.status === 'failed';
++  const tone = failed ? 'bad' : stale ? 'warn' : 'good';
++  const headline = failed ? '上一次同步失败'
++    : ageHours === null ? '还没有成功同步过'
++    : stale ? `已经 ${Math.floor(ageHours)} 小时没有成功同步` : '同步正常';
++
++  const body = `<header class="settings-topbar">
++  <a class="settings-back" href="/admin">← <span>返回产品管理</span></a>
++  <strong>库存同步</strong>
++  <a class="settings-catalog-link" href="/admin/locations">货位管理</a>
++</header>
++<main class="admin-shell users-page">
++  <div class="settings-heading">
++    <p class="eyebrow">STOCK SYNC</p>
++    <h1>销售软件 → 客户缺货标记</h1>
++    <p>销售软件每次开单后会把「款号 · 色号 · 剩余卷数」推到这里，客户图库上的 × 就是按这个画的。
++       <b>这一页是用来发现「推送悄悄停了」的。</b></p>
++  </div>
++
++  <section class="settings-section">
++    <div class="sync-banner sync-banner--${tone}">
++      <strong>${esc(headline)}</strong>
++      <span>线上现有 <b>${Number(live?.n) || 0}</b> 条库存记录${live?.at ? ` · 最后更新 ${esc(live.at)}` : ''}</span>
++    </div>
++    <div class="sync-grid">
++      <div><small>状态</small><b>${esc(state?.status || 'idle')}</b></div>
++      <div><small>上次成功</small><b>${esc(lastOk || '—')}</b></div>
++      <div><small>上次成功条数</small><b>${Number(state?.last_ok_items) || 0}</b></div>
++      <div><small>上次分了几批</small><b>${Number(state?.batches) || 0}</b></div>
++    </div>
++    ${state?.last_error ? `<p class="sync-error">最近一次错误：${esc(state.last_error)}</p>` : ''}
++    ${Number(stagingLeft?.n) ? `<p class="sync-error">暂存表里还剩 ${Number(stagingLeft.n)} 条没切换——说明上一轮推到一半断了，下次从头推会自动清掉。</p>` : ''}
++    <p class="rule-example">单批上限 ${SYNC_BATCH_LIMIT} 条，但<b>总数没有上限</b>：销售软件会自动分批推，
++      最后一批到达时才一次性切换，客户不会看到推到一半的状态。</p>
++  </section>
++</main>`;
++  return response(base('库存同步 · 库存图记', body, session.csrf));
+ }
+ function base(title, body, csrf='', script='', bodyClass='', head='', lang='zh-CN') {
+   return `<!doctype html><html lang="${esc(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="csrf-token" content="${esc(csrf)}"><title>${esc(title)}</title>${head}<link rel="stylesheet" href="/app.css?v=${ASSET_VERSION}"></head><body class="${esc(bodyClass)}">${body}<div class="toast-stack" id="toast-stack"></div>${script ? `<script src="/marker-visual.js?v=${ASSET_VERSION}"></script>${script==='editor.js'?`<script src="/marker-snap.js?v=${ASSET_VERSION}"></script>`:''}<script src="/${script}?v=${ASSET_VERSION}"></script>` : ''}</body></html>`;
+@@ -695,7 +883,7 @@ async function adminPage(request, env, user, session) {
+ 
+   const header = markerOnly
+     ? `<header class="topbar"><a class="wordmark" href="/admin"><span>×</span> Controle de estoque</a><nav><a href="/catalog">Catálogo</a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="${session.csrf}"><button class="link-button">Sair</button></form></nav></header>`
+-    : `<header class="topbar"><a class="wordmark" href="/admin"><span>×</span> 库存图记</a><nav><a class="user-admin-link" href="/admin/locations">货位管理</a><a class="user-admin-link" href="/admin/share">客户目录</a><button class="link-button user-admin-link" id="open-settings" type="button">系统设置</button><a href="/catalog">客户图库</a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="${session.csrf}"><button class="link-button">退出</button></form></nav></header>`;
++    : `<header class="topbar"><a class="wordmark" href="/admin"><span>×</span> 库存图记</a><nav><a class="user-admin-link find-link" href="/admin/find">📷 拍照找货</a><a class="user-admin-link find-link" href="/admin/cart">🛒 拣货篮</a><a class="user-admin-link" href="/admin/locations">货位管理</a><a class="user-admin-link" href="/admin/stock-sync">库存同步</a><a class="user-admin-link" href="/admin/share">客户目录</a><button class="link-button user-admin-link" id="open-settings" type="button">系统设置</button><a href="/catalog">客户图库</a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="${session.csrf}"><button class="link-button">退出</button></form></nav></header>`;
+ 
+ 
+   const ownerTools = markerOnly ? '' : `<section class="admin-heading"><div><p class="eyebrow">PRODUCT DESK · CLOUDFLARE</p><h1>产品工作台</h1><p>共有 ${total} 张匹配图片 · 每页固定 30 张，筛选和页码会在编辑后保留。</p></div><div class="admin-heading-actions"><button class="button button--ghost" id="open-settings-main" type="button">系统设置</button><a class="button button--ghost" href="/admin/share">发送给客户</a><button class="button button--accent" id="open-upload">＋ 批量上传</button></div></section><section class="sending-session" data-total="${total}"><div><strong id="sent-progress">本轮尚未发送</strong><span>成功打开并完成系统分享后，本批会自动退出选择，不会删除图片。</span></div><button class="button button--ghost button--small" id="reset-sent">开始新一轮发图</button></section><section class="toolbar"><div class="toolbar-bar"><span class="toolbar-count" id="selection-count">未选择</span><button class="button button--ghost button--small" id="select-all">全选本页</button><button class="button button--whatsapp button--small" id="share-selected" disabled>发送图片到 Zap</button></div><div class="toolbar-zone" id="bulk-zone"><p class="toolbar-zone-title">给选中的图片打标签<small>先勾图片，再点标签</small></p><div class="bulk-chip-decks"><div class="bulk-chip-deck"><span>价格</span><div class="price-preset-strip" aria-label="批量统一价格">${priceButtons}</div></div>${bulkPatternChips?`<div class="bulk-chip-deck"><span>花型</span><div class="price-preset-strip" aria-label="批量统一花型">${bulkPatternChips}</div></div>`:''}${bulkCategoryChips?`<div class="bulk-chip-deck"><span>料子</span><div class="price-preset-strip" aria-label="批量统一料子">${bulkCategoryChips}</div></div>`:''}<div class="bulk-chip-deck"><span>新款</span><div class="price-preset-strip"><button class="button button--ghost button--small" id="bulk-new-set" disabled>设为新款</button><button class="button button--ghost button--small" id="bulk-new-clear" disabled>取消新款</button></div></div></div><div class="bulk-custom"><label><small>其他价格</small><span><input class="bulk-price-input" id="bulk-price" list="price-preset-options" inputmode="decimal" placeholder="例如 12,50"><button class="button button--dark button--small" id="bulk-price-apply" disabled>应用</button></span></label><label><small>其他料子</small><span><input class="bulk-price-input" id="bulk-category" placeholder="料子名称"><button class="button button--dark button--small" id="bulk-category-apply" disabled>应用</button></span></label><label><small>其他花型</small><span><input class="bulk-price-input" id="bulk-pattern" list="pattern-options" placeholder="花型名称"><button class="button button--dark button--small" id="bulk-pattern-apply" disabled>应用</button></span></label></div></div><div class="toolbar-zone toolbar-zone--danger"><p class="toolbar-zone-title">其他操作</p><button class="button button--ghost button--small" id="fill-thumbs">补齐缩略图</button><button class="button button--ghost button--small" id="clear-selected-markers" disabled>清除选中缺货标记</button><button class="button button--danger button--small" id="delete-selected" disabled>删除选中</button></div></section>`;
+@@ -991,7 +1179,7 @@ function regionAt(regions, x, y) {
+   return regions.find(region => x >= region.x && x <= region.x + region.width && y >= region.y && y <= region.y + region.height) || null;
+ }
+ 
+-const PUBLIC_ASSETS = ['/app.css','/admin.js','/settings.js','/editor.js','/catalog.js','/regions.js','/share.js','/marker-visual.js','/marker-snap.js','/label-layout.js','/catalog-share.jpg','/favicon.ico','/robots.txt'];
++const PUBLIC_ASSETS = ['/app.css','/admin.js','/settings.js','/editor.js','/catalog.js','/regions.js','/share.js','/marker-visual.js','/marker-snap.js','/label-layout.js','/find.js','/catalog-share.jpg','/favicon.ico','/robots.txt'];
+ 
+ // ============================================================
+ // 货位（楼层 / 左右）
+@@ -1138,6 +1326,390 @@ async function styleLocationsApi(request, env) {
+   return json({ok:true, count:items.length, items});
+ }
+ 
++// ============================================================
++// 拍照找货（Stage 3）
++// ============================================================
++// 流程：选面料 → 拍照/上传 → 本地识图 → Top3 + 相似度 → 读 style_location
++//       → 人工确认 → 数量 → 加入拣货篮 → 发送给工人
++//
++// 三条必须守住的规则：
++//
++// 1. 识图只负责「这张照片像哪个款号」，它不知道也不返回货位。
++//    楼层/左右【永远】现查 style_location，那是唯一真相源。
++// 2. 识图失败、Tunnel 断、没有可靠候选、新款、素色布——任何一种情况，
++//    同一个页面都要能用「搜款号 / 按面料浏览 → 人工选」继续干活。
++//    绝不能因为识图挂了就加不了拣货条目。
++// 3. Top1 再像也不自动发给工人，必须点确认。
++//
++// 识图调用放在 Worker 服务端，不在浏览器里。这样：
++//   · 不存在 HTTPS 页面调 HTTP 本地服务的混合内容问题
++//   · 识图服务的 token 永远不会进到浏览器
++// 代价是照片多走一跳（浏览器 → Worker → 识图服务），换来的是安全和能用。
++
++const MATCH_MIN_SCORE = 0.55;     // 低于这个分数不当作可靠候选，直接引导人工选
++const MATCH_TIMEOUT_MS = 12000;
++
++const cartPhotoKey = () => `cart/${crypto.randomUUID()}`;
++
++// 调本地识图服务。任何失败都不抛异常——返回 {error} 让页面切到人工兜底。
++async function callMatcher(env, fabric, bytes, contentType) {
++  const base = String(env.MATCHER_URL || '').trim().replace(/\/$/, '');
++  const token = String(env.MATCHER_TOKEN || '');
++  if (!base) return {error:'还没有配置本地识图服务', candidates:[]};
++  if (token.length < 16) return {error:'识图服务 token 没配好', candidates:[]};
++
++  const binary = new Uint8Array(bytes);
++  let raw = '';
++  for (let i = 0; i < binary.length; i += 0x8000) raw += String.fromCharCode(...binary.subarray(i, i + 0x8000));
++
++  const controller = new AbortController();
++  const timer = setTimeout(() => controller.abort(), MATCH_TIMEOUT_MS);
++  try {
++    const res = await fetch(`${base}/search`, {
++      method:'POST', signal:controller.signal,
++      headers:{'Authorization':`Bearer ${token}`, 'Content-Type':'application/json'},
++      body: JSON.stringify({fabric: fabric || '', contentType, image: btoa(raw)})
++    });
++    if (!res.ok) return {error:`识图服务返回 HTTP ${res.status}`, candidates:[]};
++    const data = await res.json();
++    const candidates = (Array.isArray(data?.candidates) ? data.candidates : [])
++      .map(row => ({code: String(row?.code || '').trim().toUpperCase(), score: Number(row?.score) || 0}))
++      .filter(row => row.code)
++      .sort((a, b) => b.score - a.score)
++      .slice(0, 3);
++    return {candidates};
++  } catch (error) {
++    return {error: error?.name === 'AbortError' ? '识图服务超时（12秒）' : `识图服务连不上：${error?.message || error}`,
++            candidates:[]};
++  } finally { clearTimeout(timer); }
++}
++
++// 给一批款号补上「图库标准图 + 货位」。
++// 标准图只给你确认用；工人端看的是客户那张实拍照片。
++async function decorateCodes(env, codes) {
++  if (!codes.length) return new Map();
++  const placeholders = codes.map(() => '?').join(',');
++  const [products, locations] = await Promise.all([
++    all(env, `SELECT code, image_filename, category, pattern FROM product
++              WHERE code IN (${placeholders}) GROUP BY code COLLATE NOCASE`, ...codes),
++    all(env, `SELECT code, floor, side FROM style_location WHERE code IN (${placeholders})`, ...codes)
++  ]);
++  const map = new Map();
++  for (const row of products) {
++    map.set(String(row.code).toUpperCase(),
++      {code: row.code, image: row.image_filename, category: row.category || '', pattern: row.pattern || '',
++       floor: '', side: ''});
++  }
++  for (const row of locations) {
++    const key = String(row.code).toUpperCase();
++    const entry = map.get(key) || {code: row.code, image: '', category: '', pattern: ''};
++    entry.floor = row.floor || '';
++    entry.side = row.side || '';
++    map.set(key, entry);
++  }
++  return map;
++}
++
++// ---------- 拣货篮 ----------
++async function cartItems(env, userId) {
++  const rows = await all(env,
++    'SELECT * FROM pick_cart_item WHERE user_id=? ORDER BY id', userId);
++  const decorated = await decorateCodes(env, [...new Set(rows.map(row => row.code).filter(Boolean))]);
++  // 货位不存在购物篮里，每次现查——搬货以后篮子里的位置自动就是新的
++  return rows.map(row => ({...row, place: decorated.get(String(row.code).toUpperCase()) || null}));
++}
++
++async function addToCart(env, userId, fields) {
++  const stamp = now();
++  await run(env, `INSERT INTO pick_cart_item
++    (user_id,customer_label,code,color,qty,photo_key,match_score,source,note,created_at)
++    VALUES(?,?,?,?,?,?,?,?,?,?)`,
++    userId, String(fields.customer || '').trim().slice(0, 40),
++    String(fields.code || '').trim().toUpperCase().slice(0, 40),
++    String(fields.color || '').trim().slice(0, 40),
++    Math.max(0.001, Number(String(fields.qty ?? 1).replace(',', '.')) || 1),
++    String(fields.photoKey || '').slice(0, 200),
++    fields.score == null ? null : Number(fields.score),
++    fields.source === 'match' ? 'match' : 'manual',
++    String(fields.note || '').trim().slice(0, 120), stamp);
++}
++
++// ---------- 拍照找货页面 ----------
++function placeLabel(place) {
++  if (!place) return '<em class="no-place">未设货位</em>';
++  const text = [place.floor, place.side].filter(Boolean).join(' · ');
++  return text ? esc(text) : '<em class="no-place">未设货位</em>';
++}
++
++function qtyBox(name) {
++  return `<span class="findqty">
++    <button type="button" class="qty-btn" data-qty-step="-1" aria-label="少一卷">−</button>
++    <input class="qty-input" name="${name}" value="1" inputmode="decimal" aria-label="卷数">
++    <button type="button" class="qty-btn" data-qty-step="1" aria-label="多一卷">＋</button>
++  </span>`;
++}
++
++// 候选卡片：左边客户照片，右边图库标准图，中间款号/相似度/货位。
++function candidateCard(candidate, place, photoKey, customer, csrf) {
++  const percent = Math.round((candidate.score || 0) * 100);
++  const tone = percent >= 85 ? 'high' : percent >= 60 ? 'mid' : 'low';
++  return `<form method="post" action="/admin/find/add" class="cand">
++    <input type="hidden" name="csrf_token" value="${csrf}">
++    <input type="hidden" name="code" value="${esc(candidate.code)}">
++    <input type="hidden" name="photo_key" value="${esc(photoKey)}">
++    <input type="hidden" name="customer" value="${esc(customer)}">
++    <input type="hidden" name="score" value="${candidate.score}">
++    <input type="hidden" name="source" value="match">
++    <div class="cand-imgs">
++      ${place?.image ? `<img src="/media/thumb/${encodeURIComponent(place.image)}" alt="图库标准图" loading="lazy">`
++                     : '<span class="cand-noimg">图库无图</span>'}
++    </div>
++    <div class="cand-body">
++      <strong>${esc(candidate.code)}</strong>
++      <span class="cand-score cand-score--${tone}">${percent}%</span>
++      <small>${place?.category ? esc(place.category) : ''}${place?.pattern ? ` · ${esc(place.pattern)}` : ''}</small>
++      <span class="cand-place">📍 ${placeLabel(place)}</span>
++    </div>
++    <div class="cand-actions">
++      ${qtyBox('qty')}
++      <button class="button button--dark">确认 · 加入拣货篮</button>
++    </div>
++  </form>`;
++}
++
++async function findPage(env, session, user, url, state = {}) {
++  const customer = String(url.searchParams.get('customer') || state.customer || '').trim();
++  const fabric = String(url.searchParams.get('fabric') || state.fabric || '').trim();
++  const q = String(url.searchParams.get('q') || '').trim();
++
++  const fabrics = await all(env,
++    `SELECT category value, COUNT(*) n FROM product WHERE category != '' GROUP BY category ORDER BY n DESC, category`);
++  const cart = await cartItems(env, user.id);
++
++  // 人工兜底的候选列表：搜款号，或者按当前面料浏览。
++  // 这一块【永远】在页面上，不是识图失败才出现的备用界面。
++  const manualClauses = ["p.code != ''"], manualParams = [];
++  if (q) { manualClauses.push('(p.code LIKE ? OR p.pattern LIKE ?)'); manualParams.push(`%${q}%`, `%${q}%`); }
++  else if (fabric) { manualClauses.push('p.category = ?'); manualParams.push(fabric); }
++  const manualRows = (q || fabric) ? await all(env, `
++    SELECT p.code, MIN(p.image_filename) image, MIN(p.category) category, MIN(p.pattern) pattern
++    FROM product p WHERE ${manualClauses.join(' AND ')}
++    GROUP BY p.code COLLATE NOCASE ORDER BY p.code LIMIT 60`, ...manualParams) : [];
++  const manualPlaces = await decorateCodes(env, manualRows.map(row => row.code));
++
++  const fabricChips = fabrics.map(row => `<a class="chip${row.value === fabric ? ' is-on' : ''}"
++    href="/admin/find?fabric=${encodeURIComponent(row.value)}${customer ? `&customer=${encodeURIComponent(customer)}` : ''}">
++    ${esc(row.value)} <small>${row.n}</small></a>`).join('');
++
++  // 识图结果区
++  let matchBlock = '';
++  if (state.photoKey) {
++    const photo = `/admin/cart-photo/${encodeURIComponent(state.photoKey.replace(/^cart\//, ''))}`;
++    const reliable = (state.candidates || []).filter(row => row.score >= MATCH_MIN_SCORE);
++    const cards = (state.candidates || []).map(row =>
++      candidateCard(row, state.places?.get(row.code) || null, state.photoKey, customer, session.csrf)).join('');
++    const notice = state.matchError
++      ? `<p class="find-warn"><b>识图没能用上：</b>${esc(state.matchError)}。
++         照片已经存好了，用下面的「搜款号 / 按面料浏览」人工选一个就行。</p>`
++      : !reliable.length
++        ? `<p class="find-warn"><b>没有可靠候选。</b>素色布和新款经常认不出来，这很正常。
++           用下面的「搜款号 / 按面料浏览」人工选，照片一样会带给工人。</p>`
++        : '';
++    matchBlock = `<section class="find-result">
++      <div class="find-shot">
++        <img src="${esc(photo)}" alt="你拍的照片">
++        <small>你拍/上传的照片 · 工人看到的就是这张</small>
++      </div>
++      <div class="find-cands">
++        ${notice}
++        ${cards || '<p class="region-empty">识图没有返回候选。</p>'}
++        <p class="rule-example">相似度再高也要你点「确认」才会进拣货篮——系统不会替你决定。</p>
++      </div>
++    </section>`;
++  }
++
++  const manualCards = manualRows.map(row => {
++    const place = manualPlaces.get(String(row.code).toUpperCase());
++    return `<form method="post" action="/admin/find/add" class="manual-card">
++      <input type="hidden" name="csrf_token" value="${session.csrf}">
++      <input type="hidden" name="code" value="${esc(row.code)}">
++      <input type="hidden" name="photo_key" value="${esc(state.photoKey || '')}">
++      <input type="hidden" name="customer" value="${esc(customer)}">
++      <input type="hidden" name="source" value="manual">
++      ${row.image ? `<img src="/media/thumb/${encodeURIComponent(row.image)}" alt="" loading="lazy">`
++                  : '<span class="cand-noimg">无图</span>'}
++      <strong>${esc(row.code)}</strong>
++      <span class="cand-place">📍 ${placeLabel(place)}</span>
++      ${qtyBox('qty')}
++      <button class="button button--ghost button--small">加入拣货篮</button>
++    </form>`;
++  }).join('');
++
++  const body = `<header class="settings-topbar">
++  <a class="settings-back" href="/admin">← <span>返回产品管理</span></a>
++  <strong>拍照找货</strong>
++  <a class="settings-catalog-link" href="/admin/cart">🛒 拣货篮 ${cart.length}</a>
++</header>
++<main class="admin-shell find-page">
++  <form class="find-customer" method="get" action="/admin/find">
++    <label>客户代号<input name="customer" value="${esc(customer)}" maxlength="40" placeholder="例如 王先生">
++      <small>工人会看到这个，建议用代号</small></label>
++    <input type="hidden" name="fabric" value="${esc(fabric)}">
++    <button class="button button--ghost button--small">保存</button>
++  </form>
++
++  <section class="find-step">
++    <h2>1 · 选面料<small>选了就只在这个面料里找，更快也更准</small></h2>
++    <div class="chips">
++      <a class="chip${fabric ? '' : ' is-on'}" href="/admin/find${customer ? `?customer=${encodeURIComponent(customer)}` : ''}">全部</a>
++      ${fabricChips}
++    </div>
++  </section>
++
++  <section class="find-step">
++    <h2>2 · 拍照或上传<small>选好面料后可以连着拍，不用每张重选</small></h2>
++    <form method="post" action="/admin/find/match" enctype="multipart/form-data" class="find-upload">
++      <input type="hidden" name="csrf_token" value="${session.csrf}">
++      <input type="hidden" name="fabric" value="${esc(fabric)}">
++      <input type="hidden" name="customer" value="${esc(customer)}">
++      <input type="file" name="photo" accept="image/*" capture="environment" required>
++      <button class="button button--dark">找这块布</button>
++    </form>
++  </section>
++
++  ${matchBlock}
++
++  <section class="find-step">
++    <h2>3 · 认不出来就自己选<small>素色布、新款、识图挂了都走这里——不影响干活</small></h2>
++    <form class="find-search" method="get" action="/admin/find">
++      <input name="q" value="${esc(q)}" placeholder="搜款号或花型，例如 YXS102">
++      <input type="hidden" name="fabric" value="${esc(fabric)}">
++      <input type="hidden" name="customer" value="${esc(customer)}">
++      <button class="button button--ghost button--small">搜索</button>
++    </form>
++    <div class="manual-grid">${manualCards ||
++      `<p class="region-empty">${q ? '没搜到这个款号。' : '选一个面料，或者在上面搜款号。'}</p>`}</div>
++  </section>
++</main>`;
++  return response(base('拍照找货 · 库存图记', body, session.csrf, 'find.js'));
++}
++
++// ---------- 拣货篮 / 发送 ----------
++async function cartPage(env, session, user, message = '', error = '') {
++  const items = await cartItems(env, user.id);
++  const missing = items.filter(row => !row.place || (!row.place.floor && !row.place.side));
++  const customer = items.find(row => row.customer_label)?.customer_label || '';
++
++  const rows = items.map(row => {
++    const place = row.place;
++    const noPlace = !place || (!place.floor && !place.side);
++    return `<article class="cart-row${noPlace ? ' is-missing' : ''}">
++      ${row.photo_key
++        ? `<img class="cart-shot" src="/admin/cart-photo/${encodeURIComponent(row.photo_key.replace(/^cart\//, ''))}" alt="客户照片">`
++        : '<span class="cart-shot cart-shot--empty">无照片</span>'}
++      <div class="cart-main">
++        <strong>${esc(row.code || '（未选款号）')}${row.color ? ` · ${esc(row.color)}` : ''}</strong>
++        <small>${row.qty} 卷${row.match_score != null ? ` · 识图 ${Math.round(row.match_score * 100)}%` : ' · 人工选择'}</small>
++        <span class="cart-place">📍 ${placeLabel(place)}</span>
++      </div>
++      ${noPlace ? `<form method="post" action="/admin/cart/place" class="cart-fix">
++        <input type="hidden" name="csrf_token" value="${session.csrf}">
++        <input type="hidden" name="code" value="${esc(row.code)}">
++        <input name="floor" placeholder="楼层" list="dl-floors" required>
++        <input name="side" placeholder="左/右" list="dl-sides">
++        <button class="button button--small button--dark">补货位</button>
++      </form>` : ''}
++      <form method="post" action="/admin/cart/remove" class="cart-del" onsubmit="return confirm('从拣货篮里去掉？')">
++        <input type="hidden" name="csrf_token" value="${session.csrf}">
++        <input type="hidden" name="id" value="${row.id}">
++        <button class="link-button">×</button>
++      </form>
++    </article>`;
++  }).join('') || '<p class="region-empty">拣货篮是空的。到「拍照找货」加几项。</p>';
++
++  const floors = await all(env, "SELECT DISTINCT floor value FROM style_location WHERE floor != '' ORDER BY floor");
++  const sides = await all(env, "SELECT DISTINCT side value FROM style_location WHERE side != '' ORDER BY side");
++
++  const body = `<header class="settings-topbar">
++  <a class="settings-back" href="/admin/find">← <span>继续找货</span></a>
++  <strong>拣货篮</strong>
++  <a class="settings-catalog-link" href="/admin">产品管理</a>
++</header>
++<main class="admin-shell find-page">
++  <div class="settings-heading">
++    <p class="eyebrow">PICKING CART</p>
++    <h1>${esc(customer || '拣货篮')} · ${items.length} 项</h1>
++    <p>发送之前最后看一遍。工人手机上看到的是<b>你拍的这些照片</b>，不是图库标准图。</p>
++  </div>
++  ${message ? `<p class="find-ok">${esc(message)}</p>` : ''}
++  ${error ? `<p class="sync-error">${esc(error)}</p>` : ''}
++
++  ${missing.length ? `<p class="find-warn"><b>有 ${missing.length} 项还没设货位。</b>
++    工人到了仓库不知道去哪一层。可以现在补（补了会写进货位管理，以后一直有），
++    也可以先发出去——但工人那一项会显示「Sem andar」。</p>` : ''}
++
++  <div class="cart-rows">${rows}</div>
++
++  ${items.length ? `<form method="post" action="/admin/cart/send" class="cart-send">
++    <input type="hidden" name="csrf_token" value="${session.csrf}">
++    <label>客户代号<input name="customer" value="${esc(customer)}" maxlength="40" required></label>
++    <button class="button button--dark button--big">发送拣货 → 工人手机</button>
++    ${missing.length ? `<label class="cart-confirm">
++      <input type="checkbox" name="accept_missing" value="1" required>
++      我知道有 ${missing.length} 项没货位，仍然发送</label>` : ''}
++  </form>
++  <form method="post" action="/admin/cart/clear" onsubmit="return confirm('清空整个拣货篮？')">
++    <input type="hidden" name="csrf_token" value="${session.csrf}">
++    <button class="link-button danger">清空拣货篮</button>
++  </form>` : ''}
++</main>
++<datalist id="dl-floors">${floors.map(f => `<option value="${esc(f.value)}"></option>`).join('')}</datalist>
++<datalist id="dl-sides">${sides.map(s => `<option value="${esc(s.value)}"></option>`).join('')}</datalist>`;
++  return response(base('拣货篮 · 库存图记', body, session.csrf, 'find.js'));
++}
++
++// 发送：把客户照片一张张传给拿货小程序拿 photo_key，再建单。
++// 照片传不过去就整单不发——宁可失败也不要建出一张没照片的拣货单，
++// 因为工人主要就是靠照片认布的。
++async function sendCart(env, user, customer) {
++  const base = String(env.PICKING_URL || '').trim().replace(/\/$/, '');
++  const token = String(env.PICKING_TOKEN || '');
++  if (!base || token.length < 24) throw new Error('还没有配置拿货小程序的地址或 token');
++
++  const items = await cartItems(env, user.id);
++  if (!items.length) throw new Error('拣货篮是空的');
++
++  const payload = [];
++  for (const row of items) {
++    let photoKey = '';
++    if (row.photo_key) {
++      const object = await env.IMAGES.get(row.photo_key);
++      if (!object) throw new Error(`照片不见了：${row.code}`);
++      const res = await fetch(`${base}/api/photos`, {
++        method:'POST',
++        headers:{'Authorization':`Bearer ${token}`,
++                 'Content-Type':object.httpMetadata?.contentType || 'image/jpeg'},
++        body: await object.arrayBuffer()
++      });
++      if (!res.ok) throw new Error(`照片上传失败 HTTP ${res.status}（${row.code}）`);
++      photoKey = (await res.json())?.photo_key || '';
++    }
++    payload.push({style:row.code, color:row.color, qty:row.qty,
++                  floor:row.place?.floor || '', spot:row.place?.side || '',
++                  note:row.note, photo_key:photoKey});
++  }
++
++  const res = await fetch(`${base}/api/import`, {
++    method:'PUT',
++    headers:{'Authorization':`Bearer ${token}`, 'Content-Type':'application/json'},
++    body: JSON.stringify({uuid: crypto.randomUUID(), customer_label: customer, items: payload})
++  });
++  if (!res.ok) throw new Error(`建单失败 HTTP ${res.status}：${(await res.text()).slice(0, 200)}`);
++  const result = await res.json();
++  await run(env, 'DELETE FROM pick_cart_item WHERE user_id=?', user.id);
++  return result;
++}
++
+ export default {
+   async fetch(request, env) {
+     const url = new URL(request.url), path = url.pathname, method = request.method.toUpperCase();
+@@ -1226,6 +1798,72 @@ export default {
+         return redirect('/admin/code-rules');
+       }
+ 
++      // 客户实拍照片：必须登录才能看。
++      // 【不要】走 /media/，那条路由在登录检查之前，是给客户图库用的公开路由。
++      {
++        const shot = path.match(/^\/admin\/cart-photo\/(.+)$/);
++        if (shot && method === 'GET') {
++          if(!owner) return response('无权限',403);
++          const object = await env.IMAGES.get(`cart/${decodeURIComponent(shot[1])}`);
++          if (!object) return response('照片不存在',404);
++          return new Response(object.body, {headers:{
++            'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
++            'Cache-Control': 'private, max-age=86400'}});
++        }
++      }
++      if (path === '/admin/find' && method === 'GET') { if(!owner) return response('无权限',403); return findPage(env,session,user,url); }
++      if (path === '/admin/find/match' && method === 'POST') {
++        if(!owner) return response('无权限',403);
++        const form=await request.formData();
++        if(!validCsrf(request,session,String(form.get('csrf_token')||''))) return response('请求已过期',403);
++        const file=form.get('photo'), fabric=String(form.get('fabric')||''), customer=String(form.get('customer')||'');
++        if(!file || typeof file.arrayBuffer!=='function' || !file.size) return response('请先选一张照片',400);
++        if(file.size > 12*1024*1024) return response('照片太大，请压到 12MB 以内',400);
++        const bytes=await file.arrayBuffer(), type=file.type||'image/jpeg';
++        // 照片【先存下来】再去识图：识图挂了照片也不能丢，否则要重拍
++        const photoKey=cartPhotoKey();
++        await env.IMAGES.put(photoKey, bytes, {httpMetadata:{contentType:type}});
++        const match=await callMatcher(env, fabric, bytes, type);
++        const places=await decorateCodes(env, match.candidates.map(row=>row.code));
++        const next=new URL(url); next.searchParams.set('fabric',fabric); next.searchParams.set('customer',customer);
++        return findPage(env,session,user,next,{photoKey, candidates:match.candidates, places,
++          matchError:match.error, fabric, customer});
++      }
++      if (path === '/admin/find/add' && method === 'POST') {
++        if(!owner) return response('无权限',403);
++        const form=await request.formData();
++        if(!validCsrf(request,session,String(form.get('csrf_token')||''))) return response('请求已过期',403);
++        const code=String(form.get('code')||'').trim();
++        if(!code) return response('没有款号',400);
++        await addToCart(env,user.id,{customer:form.get('customer'), code, color:form.get('color'),
++          qty:form.get('qty'), photoKey:form.get('photo_key'), score:form.get('score'),
++          source:form.get('source'), note:form.get('note')});
++        const back=new URL('/admin/find', url.origin);
++        if(form.get('customer')) back.searchParams.set('customer',String(form.get('customer')));
++        if(form.get('fabric')) back.searchParams.set('fabric',String(form.get('fabric')));
++        return redirect(back.pathname+back.search);
++      }
++      if (path === '/admin/cart' && method === 'GET') { if(!owner) return response('无权限',403); return cartPage(env,session,user); }
++      if (path.startsWith('/admin/cart/') && method === 'POST') {
++        if(!owner) return response('无权限',403);
++        const form=await request.formData();
++        if(!validCsrf(request,session,String(form.get('csrf_token')||''))) return response('请求已过期',403);
++        if (path === '/admin/cart/remove') {
++          await run(env,'DELETE FROM pick_cart_item WHERE id=? AND user_id=?',Number(form.get('id')||0),user.id);
++        } else if (path === '/admin/cart/clear') {
++          await run(env,'DELETE FROM pick_cart_item WHERE user_id=?',user.id);
++        } else if (path === '/admin/cart/place') {
++          // 在拣货篮里补的货位会写进 style_location，以后一直有
++          await setStyleLocation(env,String(form.get('code')||''),form.get('floor'),form.get('side'),'拣货时补填',session.uid);
++        } else if (path === '/admin/cart/send') {
++          try {
++            const result=await sendCart(env,user,String(form.get('customer')||'').trim());
++            return cartPage(env,session,user,`已发送：拣货单 ${result.code}，共 ${result.count} 项。工人手机上已经能看到了。`);
++          } catch (error) { return cartPage(env,session,user,'',String(error.message||error)); }
++        } else return response('未知操作',404);
++        return redirect('/admin/cart');
++      }
++      if (path === '/admin/stock-sync' && method === 'GET') { if(!owner) return response('无权限',403); return stockSyncPage(env,session); }
+       if (path === '/admin/locations' && method === 'GET') { if(!owner) return response('无权限',403); return locationsPage(env,session,url); }
+       if (path === '/admin/locations' && method === 'POST') {
+         if(!owner) return response('无权限',403);

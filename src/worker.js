@@ -575,6 +575,30 @@ async function applyEvents(env, userId, events) {
   return applied;
 }
 
+// ---------- 接收图库推来的客户照片 ----------
+// 图库「拍照找货」确认完之后，先把客户实拍照片逐张传到这里拿 photo_key，
+// 再带着这些 key 调 /api/import 建单。工人端看到的就是客户这张照片，
+// 不是图库里的标准商品图。
+async function receivePhoto(request, env) {
+  const token = String(env.IMPORT_TOKEN || '');
+  if (token.length < 24) return json({error: '导入接口未启用'}, 503);
+  const given = enc.encode(String(request.headers.get('Authorization') || ''));
+  const expected = enc.encode(`Bearer ${token}`);
+  if (given.length !== expected.length || !crypto.subtle.timingSafeEqual(given, expected))
+    return json({error: '无权限'}, 401);
+
+  const type = String(request.headers.get('Content-Type') || '').split(';')[0].trim();
+  const ext = PHOTO_TYPES[type];
+  if (!ext) return json({error: '照片格式只支持 JPG / PNG / WebP'}, 400);
+  const bytes = await request.arrayBuffer();
+  if (!bytes.byteLength) return json({error: '照片是空的'}, 400);
+  if (bytes.byteLength > MAX_PHOTO) return json({error: '照片太大'}, 400);
+
+  const key = `import/${randomId()}.${ext}`;
+  await env.PHOTOS.put(key, bytes, {httpMetadata: {contentType: type}});
+  return json({ok: true, photo_key: key});
+}
+
 // ---------- 给以后的本地系统用的导入接口 ----------
 // 本地识图确认完 → PUT /api/import 一整张拣货单。external_uuid 防重复导入。
 async function importList(request, env) {
@@ -627,6 +651,7 @@ export default {
 
       // 本地系统推拣货单（自带 token，不走登录）
       if (path === '/api/import' && method === 'PUT') return importList(request, env);
+      if (path === '/api/photos' && method === 'POST') return receivePhoto(request, env);
 
       const userCount = await first(env, 'SELECT COUNT(*) n FROM app_user');
       if (!userCount?.n) {
