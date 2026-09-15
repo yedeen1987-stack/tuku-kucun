@@ -1,14 +1,23 @@
 # 给 Codex 的任务单
 
-把这份文件整个贴给 Codex，或者让它读 `/srv/projects/tuku-kucun/integration/给Codex的任务单.md`。
+把这份文件整个贴给 Codex。
+
+**先读这段：路径不要照搬**
+
+仓库里那份 `AGENTS.md` 写的是 `/srv/projects/textil134` 这类路径，
+那描述的是一台 **Ubuntu 服务器**。如果你现在跑在 Mac 上（路径长得像
+`/Users/xxx/Projects/...`），那些路径在你这儿**全都不存在**，不要去找。
+
+**本任务单里一律用 `<工作目录>` 代替**，你自己选一个合适的位置
+（比如 Mac 上就用 `~/Projects`），在报告里说明你选了哪里。
 
 **授权范围（一次说清，省得每步都问）**
 
-- 允许修改 `/srv/projects/textil134` 和 `/srv/projects/xiaoshouruanjian`
-- 允许新建 `/srv/projects/tuku-kucun` 和 `/srv/projects/textil134-matcher`
-- 允许对这两个项目执行 `wrangler deploy`（部署是这次任务的目标，不是副作用）
+- 允许在 `<工作目录>` 下新建 `tuku-kucun`、`textil134`、`textil134-matcher`
+- 允许修改已经存在的销售软件项目（你已经找到在 `~/Projects/xiaoshouruanjian`）
+- 允许执行 `wrangler deploy`（部署是这次任务的目标，不是副作用）
 - 允许创建 D1 数据库、R2 桶、设置 secret
-- **不允许**：改动其他项目、动 Portainer、全局 prune、碰 `/mnt/ugreen` 里无关文件
+- **不允许**：改动其他项目、动 Portainer、全局 prune
 - **不要在报告里输出任何 token、密码、secret 的值**，只说「已设置」
 
 按 A→E 顺序做。**每个任务做完停下来报告，等确认再做下一个。**
@@ -27,21 +36,37 @@
 
 ## 任务 A · 取代码
 
-两个仓库。图库的改动**已经推成分支了，不需要打补丁**。
+**图库代码现在在 GitHub 上了**，所以「找不到图库项目」不再是问题——直接 clone 就行，
+不需要在本机找。
 
 ```bash
-# 1) 图库：我的改动在这个分支上
-cd /srv/projects/textil134
-git fetch origin
-git branch -a | grep feature/locations-and-find
+cd <工作目录>
 
-# 2) 拿货小程序：新项目的代码
+# 1) 图库（我的改动在 feature/locations-and-find 分支）
+git clone https://github.com/yedeen1987-stack/textil134.git
+cd textil134 && git checkout feature/locations-and-find && cd ..
+
+# 2) 拿货小程序
 git clone --depth 1 --branch claude/zen-cerf-zn4iz9 \
-  https://github.com/yedeen1987-stack/tuku-kucun.git /srv/projects/tuku-kucun
+  https://github.com/yedeen1987-stack/tuku-kucun.git
 ```
 
-**验收**：`git branch -a` 能看到 `remotes/origin/feature/locations-and-find`，
-并且 `/srv/projects/tuku-kucun` 里有 `src/worker.js` 和 `schema.sql`。
+### A1 顺便查两件事，一起报回来
+
+```bash
+# 这台机器上到底有没有图库的另一份代码？（用来做任务 C1 的新旧对比）
+find ~ -maxdepth 5 -type d -name "textil134*" 2>/dev/null
+find ~ -maxdepth 6 -name "wrangler.jsonc" 2>/dev/null | head
+
+# wrangler 登录了吗？没登录后面所有部署都会失败
+npx wrangler whoami 2>&1 | head -5
+```
+
+**验收 / 报告**：
+1. 你选的 `<工作目录>` 是哪里
+2. 两个仓库是否 clone 成功，`textil134` 是否切到了 `feature/locations-and-find`
+3. **本机有没有找到图库的另一份代码**（找到了就报路径，没找到就说没找到——两种都正常）
+4. `wrangler whoami` 的结果（**账号邮箱可以报，不要报任何 token**）
 
 ---
 
@@ -52,7 +77,7 @@ git clone --depth 1 --branch claude/zen-cerf-zn4iz9 \
 任务 A 已经 clone 好了，直接用：
 
 ```bash
-cd /srv/projects/tuku-kucun
+cd <工作目录>/tuku-kucun
 npm install
 ```
 
@@ -112,22 +137,41 @@ npx wrangler deploy
 
 **前置**：任务 B 完成（需要拿货网址和 IMPORT_TOKEN）。
 
-### C1 ⚠️ 先确认导入的代码是不是最新的
+### C1 ⚠️ 先确认代码是不是最新的
 
-这一步**不能跳**。图库代码以前从来没推到 GitHub，仓库里只有 README 和 AGENTS.md。
+这一步**不能跳**。图库代码以前从来没推到 GitHub，仓库里原本只有 README 和 AGENTS.md。
 我推的分支里第一个提交 `b53d3a2` 是「导入服务器上的现有图库代码」，
 内容来自用户上传的 zip 压缩包。
 
-**如果服务器上的代码比那个 zip 新，直接合并会丢掉服务器上的改动。**
+**如果别处有更新的代码，直接用这个分支部署会把那些改动弄丢。**
+
+分两种情况：
+
+**情况一：任务 A1 在本机找到了图库的另一份代码**
 
 ```bash
-cd /srv/projects/textil134
-git stash list && git status          # 服务器上有没有未提交的改动？
-git diff b53d3a2 -- src/ public/      # 服务器当前代码 vs 导入的那份
+cd <工作目录>/textil134
+diff -ru <找到的那份路径>/src  ./src  | head -50
+diff -ru <找到的那份路径>/public ./public | head -50
 ```
 
-- **没有差异** → 继续 C2
-- **有差异** → **停下来报告差异内容**，不要自己决定怎么合
+- 没有差异 → 继续 C2
+- **有差异 → 停下来报告差异内容**，不要自己决定怎么合
+
+**情况二：本机没有找到（图库可能在那台 Ubuntu 服务器上）**
+
+**停下来报告**，告诉用户：需要确认那台服务器上 `/srv/projects/textil134`
+的代码和 `b53d3a2` 这个提交是否一致。在确认之前不要部署。
+
+用户可以在服务器上跑这个来对比：
+
+```bash
+cd <工作目录>/textil134
+git fetch origin
+git diff b53d3a2 -- src/ public/
+```
+
+没有输出就说明一致，可以继续。
 
 ### C2 切到分支
 
@@ -165,7 +209,7 @@ npx wrangler deploy
 ### C5 让拿货小程序能读货位
 
 ```bash
-cd /srv/projects/tuku-kucun
+cd <工作目录>/tuku-kucun
 npx wrangler secret put GALLERY_URL      # 图库网址
 npx wrangler secret put GALLERY_TOKEN    # C3 的 LOCATION_TOKEN，同一个值
 npx wrangler deploy
@@ -194,10 +238,22 @@ npx wrangler deploy
 
 **前置**：任务 C 完成（图库已有 `stock_sync_state` 表）。
 
+**先确认这是我改的那一份**。你的账号下有 `xiaoshouruanjian` 和 `Macxiaoshouruanjian`
+两个仓库，我的改动是针对前者写的。
+
 ```bash
-cd /srv/projects/xiaoshouruanjian   # 如果销售软件在 Windows 机器上，这一步在那台机器做
-git status
-cp /srv/projects/tuku-kucun/integration/xiaoshouruanjian/stock_push.py ./stock_push.py
+cd ~/Projects/xiaoshouruanjian
+git remote -v                         # 确认是 xiaoshouruanjian 不是 Mac 版
+git status                            # 有未提交改动先停下来问
+grep -c "MAX_ITEMS = 1000" stock_push.py   # 应该是 1（旧版本的特征）
+```
+
+`grep` 结果不是 1，说明这份代码和我改的基线不一样，**停下来报告**，不要覆盖。
+
+确认无误再替换：
+
+```bash
+cp <工作目录>/tuku-kucun/integration/xiaoshouruanjian/stock_push.py ./stock_push.py
 ```
 
 （也可以用 `0001-分批同步.patch`，但直接覆盖更简单，这个文件是整体重写的。）
@@ -240,14 +296,14 @@ D2 的输出（可以带上，里面没有密钥）、D3 三条验收结果。
 
 **前置**：任务 C 完成。
 
-代码在 `/srv/projects/tuku-kucun/local-matcher/`。
+代码在 `<工作目录>/tuku-kucun/local-matcher/`。
 
 ### E1 跑起来
 
 ```bash
-mkdir -p /srv/projects/textil134-matcher
-cp /srv/projects/tuku-kucun/local-matcher/* /srv/projects/textil134-matcher/
-cd /srv/projects/textil134-matcher
+mkdir -p <工作目录>/textil134-matcher
+cp <工作目录>/tuku-kucun/local-matcher/* <工作目录>/textil134-matcher/
+cd <工作目录>/textil134-matcher
 pip3 install pillow          # 只需要这一个
 ```
 
@@ -289,7 +345,7 @@ cloudflared service install
 ### E3 接到图库
 
 ```bash
-cd /srv/projects/textil134
+cd <工作目录>/textil134
 npx wrangler secret put MATCHER_URL      # https://match.<你的域名>
 npx wrangler secret put MATCHER_TOKEN    # E1 那个值
 npx wrangler deploy
