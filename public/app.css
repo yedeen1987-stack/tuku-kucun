@@ -185,3 +185,28 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .pick-card { grid-template-columns: 72px 1fr; }
   .pick-photo { width: 72px; height: 72px; }
 }
+
+/* ---------- 条目卷数：点 − ＋ 直接改，自动保存 ---------- */
+.item-qty { display: flex; align-items: center; gap: .2rem; flex: 0 0 auto; }
+.qty-btn {
+  width: 34px; height: 34px; padding: 0; flex: 0 0 34px;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff;
+  color: var(--ink); font-size: 1.15rem; line-height: 1; cursor: pointer;
+}
+.qty-btn:hover { background: var(--bg); }
+.qty-btn:active { transform: translateY(1px); }
+.item-qty .qty-input {
+  width: 52px; flex: 0 0 52px; min-height: 34px; margin: 0; padding: .25rem;
+  text-align: center; font-variant-numeric: tabular-nums; font-weight: 700;
+  border: 1px solid var(--line); border-radius: 8px;
+}
+.qty-unit { color: var(--muted); font-size: .85rem; margin-left: .1rem; }
+.item-qty.is-saving { opacity: .5; }
+.item-qty.is-saved .qty-input { border-color: var(--ok); background: #f0fdf4; }
+.item-qty.is-error .qty-input { border-color: var(--danger); background: #fee2e2; }
+
+@media (max-width: 560px) {
+  .item-row { flex-wrap: wrap; }
+  .item-qty { order: 3; margin-left: 68px; }
+  .qty-unit { display: none; }
+}

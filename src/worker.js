@@ -268,9 +268,15 @@ async function listPage(env, user, session, listId) {
         : '<span class="item-thumb item-thumb--empty">无图</span>'}
       <div class="item-main">
         <strong>${esc(item.style || '（未填款号）')}${item.color ? ` · ${esc(item.color)}` : ''}</strong>
-        <small>${place ? esc(place) : '<em>未填货位</em>'} · ${item.qty} 卷${item.note ? ` · ${esc(item.note)}` : ''}</small>
+        <small>${place ? esc(place) : '<em>未填货位</em>'}${item.note ? ` · ${esc(item.note)}` : ''}</small>
       </div>
-      <span class="item-state">${done ? '已拿' : `${item.taken_qty}/${item.qty}`}</span>
+      <div class="item-qty" data-item="${item.id}" data-taken="${item.taken_qty}">
+        <button type="button" class="qty-btn" data-qty-step="-1" aria-label="少一卷">−</button>
+        <input class="qty-input" inputmode="decimal" value="${item.qty}" aria-label="卷数">
+        <button type="button" class="qty-btn" data-qty-step="1" aria-label="多一卷">＋</button>
+        <span class="qty-unit">卷</span>
+      </div>
+      <span class="item-state" data-state-for="${item.id}">${done ? '已拿' : `${item.taken_qty}/${item.qty}`}</span>
       <form method="post" action="/api/items/${item.id}/delete" class="item-del"
             onsubmit="return confirm('删除这一项？')">
         <input type="hidden" name="csrf_token" value="${session.csrf}">
@@ -292,7 +298,7 @@ async function listPage(env, user, session, listId) {
 <main class="wrap">
   <div class="page-head">
     <h1>${esc(list.customer_label)}</h1>
-    <span class="muted">单号 ${esc(list.code)} · 已拿 ${progress.done}/${progress.total}</span>
+    <span class="muted">单号 ${esc(list.code)} · 已拿 <b id="list-done">${progress.done}</b>/${progress.total}</span>
   </div>
   ${list.note ? `<p class="note-line">${esc(list.note)}</p>` : ''}
 
@@ -497,6 +503,38 @@ async function serveMedia(env, key) {
   }});
 }
 
+// ---------- 从库存图记读货位 ----------
+// 加条目时如果没填楼层/位置，就去图库按款号查一次。
+// 图库的 style_location 是货位的唯一真相源——这边只读，不存第二份。
+// 图库连不上时不报错：让你手工填，别因为查货位失败就不让加条目。
+let locationCache = null;
+
+async function galleryLocations(env) {
+  const base = String(env.GALLERY_URL || '').trim().replace(/\/$/, '');
+  const token = String(env.GALLERY_TOKEN || '');
+  if (!base || token.length < 24) return null;
+  if (locationCache && Date.now() - locationCache.at < 60000) return locationCache.map;
+  try {
+    const res = await fetch(`${base}/api/style-locations`, {headers: {Authorization: `Bearer ${token}`}});
+    if (!res.ok) return locationCache?.map || null;
+    const body = await res.json();
+    const map = new Map();
+    for (const item of body?.items || []) {
+      map.set(String(item.code || '').toUpperCase(), {floor: item.floor || '', side: item.side || ''});
+    }
+    locationCache = {at: Date.now(), map};
+    return map;
+  } catch { return locationCache?.map || null; }
+}
+
+// 返回 [楼层, 位置]：填了就用填的，没填才去图库查。
+async function resolvePlace(env, style, floor, spot) {
+  if (floor || spot || !style) return [floor, spot];
+  const map = await galleryLocations(env);
+  const hit = map?.get(style.toUpperCase());
+  return hit ? [hit.floor, hit.side] : [floor, spot];
+}
+
 // ---------- 拣货单编号 ----------
 async function nextListCode(env) {
   const row = await first(env, `SELECT code FROM picking_list WHERE code GLOB '[0-9]*' ORDER BY CAST(code AS INTEGER) DESC LIMIT 1`);
@@ -564,11 +602,14 @@ async function importList(request, env) {
 
   let order = 0;
   for (const item of items) {
+    const style = cleanStyle(item?.style);
+    const [floor, spot] = await resolvePlace(env, style,
+      cleanText(item?.floor, 40), cleanText(item?.spot, 40));
     await run(env,
       `INSERT INTO picking_item(list_id,style,color,qty,floor,spot,note,photo_key,sort_order,created_at)
        VALUES(?,?,?,?,?,?,?,?,?,?)`,
-      listId, cleanStyle(item?.style), cleanText(item?.color, 40), cleanQty(item?.qty),
-      cleanText(item?.floor, 40), cleanText(item?.spot, 40), cleanText(item?.note, 120),
+      listId, style, cleanText(item?.color, 40), cleanQty(item?.qty),
+      floor, spot, cleanText(item?.note, 120),
       String(item?.photo_key || '').slice(0, 200), order++, stamp);
   }
   return json({ok: true, list_id: listId, code, count: items.length});
@@ -706,14 +747,35 @@ export default {
         try { photoKey = await storePhoto(env, listId, form.get('photo')); }
         catch (error) { return response(`<main class="wrap"><p class="error">${esc(error.message)}</p><a class="btn" href="/list/${listId}">返回</a></main>`, 400); }
         const order = (await first(env, 'SELECT COALESCE(MAX(sort_order),-1) m FROM picking_item WHERE list_id=?', listId))?.m + 1;
+        const style = cleanStyle(form.get('style'));
+        const [floor, spot] = await resolvePlace(env, style,
+          cleanText(form.get('floor'), 40), cleanText(form.get('spot'), 40));
         await run(env,
           `INSERT INTO picking_item(list_id,style,color,qty,floor,spot,note,photo_key,sort_order,created_at)
            VALUES(?,?,?,?,?,?,?,?,?,?)`,
-          listId, cleanStyle(form.get('style')), cleanText(form.get('color'), 40), cleanQty(form.get('qty')),
-          cleanText(form.get('floor'), 40), cleanText(form.get('spot'), 40), cleanText(form.get('note'), 120),
-          photoKey, order, now());
+          listId, style, cleanText(form.get('color'), 40), cleanQty(form.get('qty')),
+          floor, spot, cleanText(form.get('note'), 120), photoKey, order, now());
         await run(env, 'UPDATE picking_list SET updated_at=? WHERE id=?', now(), listId);
         return redirect(`/list/${listId}`);
+      }
+
+      match = path.match(/^\/api\/items\/(\d+)\/qty$/);
+      if (match && method === 'POST') {
+        const item = await first(env, 'SELECT id,list_id,qty,taken_qty FROM picking_item WHERE id=?', Number(match[1]));
+        if (!item) return json({error: '条目不存在'}, 404);
+        const qty = cleanQty(form.get('qty'));
+        // 数量调小到比「已拿」还少时，把已拿一起收回来，否则会出现 3/2 这种数字。
+        // 这一步也记一条流水，免得工人的拣货记录凭空对不上。
+        const taken = Math.min(item.taken_qty, qty);
+        await run(env, 'UPDATE picking_item SET qty=?, taken_qty=? WHERE id=?', qty, taken, item.id);
+        if (taken !== item.taken_qty) {
+          await run(env,
+            `INSERT INTO picking_event(item_id,list_id,action,qty,user_id,client_uuid,created_at)
+             VALUES(?,?,?,?,?,?,?)`,
+            item.id, item.list_id, taken > 0 ? 'taken' : 'untaken', taken, user.id, `qty-${randomId()}`, now());
+        }
+        await run(env, 'UPDATE picking_list SET updated_at=? WHERE id=?', now(), item.list_id);
+        return json({ok: true, qty, taken_qty: taken});
       }
 
       match = path.match(/^\/api\/items\/(\d+)\/delete$/);

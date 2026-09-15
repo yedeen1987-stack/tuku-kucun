@@ -1,0 +1,251 @@
+diff --git a/public/app.css b/public/app.css
+index c802c2f..378d20a 100644
+--- a/public/app.css
++++ b/public/app.css
+@@ -995,3 +995,27 @@ body.viewer-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hi
+ .stock-manual label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
+ .stock-manual input { width: 120px; min-height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; font: 500 14px var(--mono); }
+ .stock-manual small { width: 100%; color: var(--muted); font-size: 11px; }
++
++/* ---------- 货位管理 ---------- */
++.loc-progress { font-size: 1.05rem; }
++.loc-progress b { font-size: 1.4rem; }
++.loc-filter { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
++.loc-filter input { flex: 1 1 200px; min-height: 42px; padding: .5rem .7rem; border: 1px solid #d8dce2; border-radius: 8px; font: inherit; }
++.loc-bulk-bar { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; padding: .9rem; background: #f4f6f9; border-radius: 12px; margin-bottom: .5rem; }
++.loc-bulk-bar label { display: flex; flex-direction: column; gap: .25rem; font-size: .85rem; font-weight: 600; flex: 1 1 140px; margin: 0; }
++.loc-bulk-bar input { min-height: 42px; padding: .5rem .7rem; border: 1px solid #d8dce2; border-radius: 8px; font: inherit; }
++.loc-list { display: flex; flex-direction: column; gap: .3rem; margin-top: .75rem; max-height: 60vh; overflow-y: auto; }
++.loc-row { display: grid; grid-template-columns: 24px 1fr 1fr 1fr; gap: .75rem; align-items: center;
++  padding: .6rem .75rem; border: 1px solid #e6e9ee; border-radius: 10px; margin: 0; cursor: pointer; font-weight: 400; }
++.loc-row:hover { background: #f7f9fc; }
++.loc-row.is-placed { background: #f0fdf4; border-color: #bbf7d0; }
++.loc-code { font-weight: 700; }
++.loc-cat, .loc-now { color: #6b7280; font-size: .9rem; }
++.loc-now em { color: #b45309; font-style: normal; }
++.loc-changes { display: flex; flex-direction: column; gap: .4rem; }
++.loc-change { display: flex; flex-direction: column; gap: .1rem; padding: .6rem .75rem; border: 1px solid #e6e9ee; border-radius: 10px; }
++.loc-change span { font-size: .92rem; }
++@media (max-width: 640px) {
++  .loc-row { grid-template-columns: 24px 1fr; }
++  .loc-cat { display: none; }
++}
+diff --git a/src/worker.js b/src/worker.js
+index fe72808..576f8d0 100644
+--- a/src/worker.js
++++ b/src/worker.js
+@@ -157,6 +157,28 @@ function ensureSchema(env) {
+         updated_at TEXT NOT NULL,
+         PRIMARY KEY(style, color)
+       )`).run();
++      // 货位：绑定「款号」，不绑色号、不绑单张图片。
++      // 一个款号的布放在一起，搬货改一次就够（见 style_location 注释）。
++      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS style_location (
++        code TEXT PRIMARY KEY COLLATE NOCASE,
++        floor TEXT NOT NULL DEFAULT '',
++        side TEXT NOT NULL DEFAULT '',
++        updated_at TEXT NOT NULL,
++        updated_by INTEGER
++      )`).run();
++      // 搬货流水：谁、什么时候、从哪搬到哪。没有这个就查不出货位是被谁改错的。
++      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS style_location_change (
++        id INTEGER PRIMARY KEY AUTOINCREMENT,
++        code TEXT NOT NULL COLLATE NOCASE,
++        old_floor TEXT NOT NULL DEFAULT '',
++        old_side TEXT NOT NULL DEFAULT '',
++        new_floor TEXT NOT NULL DEFAULT '',
++        new_side TEXT NOT NULL DEFAULT '',
++        reason TEXT NOT NULL DEFAULT '',
++        changed_at TEXT NOT NULL,
++        changed_by INTEGER
++      )`).run();
++      await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_location_change_code ON style_location_change(code, id DESC)').run();
+       for (const sql of [
+         'ALTER TABLE stock_marker ADD COLUMN color_region_id INTEGER',
+         "ALTER TABLE product ADD COLUMN pattern TEXT NOT NULL DEFAULT ''",
+@@ -673,7 +695,7 @@ async function adminPage(request, env, user, session) {
+ 
+   const header = markerOnly
+     ? `<header class="topbar"><a class="wordmark" href="/admin"><span>×</span> Controle de estoque</a><nav><a href="/catalog">Catálogo</a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="${session.csrf}"><button class="link-button">Sair</button></form></nav></header>`
+-    : `<header class="topbar"><a class="wordmark" href="/admin"><span>×</span> 库存图记</a><nav><a class="user-admin-link" href="/admin/share">客户目录</a><button class="link-button user-admin-link" id="open-settings" type="button">系统设置</button><a href="/catalog">客户图库</a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="${session.csrf}"><button class="link-button">退出</button></form></nav></header>`;
++    : `<header class="topbar"><a class="wordmark" href="/admin"><span>×</span> 库存图记</a><nav><a class="user-admin-link" href="/admin/locations">货位管理</a><a class="user-admin-link" href="/admin/share">客户目录</a><button class="link-button user-admin-link" id="open-settings" type="button">系统设置</button><a href="/catalog">客户图库</a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="${session.csrf}"><button class="link-button">退出</button></form></nav></header>`;
+ 
+ 
+   const ownerTools = markerOnly ? '' : `<section class="admin-heading"><div><p class="eyebrow">PRODUCT DESK · CLOUDFLARE</p><h1>产品工作台</h1><p>共有 ${total} 张匹配图片 · 每页固定 30 张，筛选和页码会在编辑后保留。</p></div><div class="admin-heading-actions"><button class="button button--ghost" id="open-settings-main" type="button">系统设置</button><a class="button button--ghost" href="/admin/share">发送给客户</a><button class="button button--accent" id="open-upload">＋ 批量上传</button></div></section><section class="sending-session" data-total="${total}"><div><strong id="sent-progress">本轮尚未发送</strong><span>成功打开并完成系统分享后，本批会自动退出选择，不会删除图片。</span></div><button class="button button--ghost button--small" id="reset-sent">开始新一轮发图</button></section><section class="toolbar"><div class="toolbar-bar"><span class="toolbar-count" id="selection-count">未选择</span><button class="button button--ghost button--small" id="select-all">全选本页</button><button class="button button--whatsapp button--small" id="share-selected" disabled>发送图片到 Zap</button></div><div class="toolbar-zone" id="bulk-zone"><p class="toolbar-zone-title">给选中的图片打标签<small>先勾图片，再点标签</small></p><div class="bulk-chip-decks"><div class="bulk-chip-deck"><span>价格</span><div class="price-preset-strip" aria-label="批量统一价格">${priceButtons}</div></div>${bulkPatternChips?`<div class="bulk-chip-deck"><span>花型</span><div class="price-preset-strip" aria-label="批量统一花型">${bulkPatternChips}</div></div>`:''}${bulkCategoryChips?`<div class="bulk-chip-deck"><span>料子</span><div class="price-preset-strip" aria-label="批量统一料子">${bulkCategoryChips}</div></div>`:''}<div class="bulk-chip-deck"><span>新款</span><div class="price-preset-strip"><button class="button button--ghost button--small" id="bulk-new-set" disabled>设为新款</button><button class="button button--ghost button--small" id="bulk-new-clear" disabled>取消新款</button></div></div></div><div class="bulk-custom"><label><small>其他价格</small><span><input class="bulk-price-input" id="bulk-price" list="price-preset-options" inputmode="decimal" placeholder="例如 12,50"><button class="button button--dark button--small" id="bulk-price-apply" disabled>应用</button></span></label><label><small>其他料子</small><span><input class="bulk-price-input" id="bulk-category" placeholder="料子名称"><button class="button button--dark button--small" id="bulk-category-apply" disabled>应用</button></span></label><label><small>其他花型</small><span><input class="bulk-price-input" id="bulk-pattern" list="pattern-options" placeholder="花型名称"><button class="button button--dark button--small" id="bulk-pattern-apply" disabled>应用</button></span></label></div></div><div class="toolbar-zone toolbar-zone--danger"><p class="toolbar-zone-title">其他操作</p><button class="button button--ghost button--small" id="fill-thumbs">补齐缩略图</button><button class="button button--ghost button--small" id="clear-selected-markers" disabled>清除选中缺货标记</button><button class="button button--danger button--small" id="delete-selected" disabled>删除选中</button></div></section>`;
+@@ -971,6 +993,151 @@ function regionAt(regions, x, y) {
+ 
+ const PUBLIC_ASSETS = ['/app.css','/admin.js','/settings.js','/editor.js','/catalog.js','/regions.js','/share.js','/marker-visual.js','/marker-snap.js','/label-layout.js','/catalog-share.jpg','/favicon.ico','/robots.txt'];
+ 
++// ============================================================
++// 货位（楼层 / 左右）
++// ============================================================
++// 【重要】货位绑定的是「款号」，不是 product 行。
++// product 表是一行一张图，code 没有唯一约束——同一个款号有 5 张图就是 5 行。
++// 如果把 floor/side 加在 product 上，搬一次货要改 5 行，必然改漏、必然对不上。
++// 所以货位单独一张表，款号做主键，搬货改一次就完成。
++//
++// 另外：客户目录 catalogPage 只 SELECT product 的固定几列，
++// 这张表根本不参与那条查询，所以货位在结构上就不可能泄露给客户。
++
++const cleanPlace = value => String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, 20);
++
++async function styleLocationMap(env) {
++  const map = new Map();
++  for (const row of await all(env, 'SELECT code,floor,side FROM style_location')) {
++    map.set(String(row.code).toUpperCase(), {floor: row.floor || '', side: row.side || ''});
++  }
++  return map;
++}
++
++// 写货位。只有真的变了才记流水，避免重复保存刷出一堆无意义记录。
++async function setStyleLocation(env, code, floor, side, reason, userId) {
++  code = String(code || '').trim().toUpperCase();
++  if (!code) return null;
++  floor = cleanPlace(floor);
++  side = cleanPlace(side);
++  const current = await first(env, 'SELECT floor,side FROM style_location WHERE code=?', code);
++  const oldFloor = current?.floor || '', oldSide = current?.side || '';
++  if (oldFloor === floor && oldSide === side) return {code, changed:false};
++  const stamp = now();
++  await run(env, `INSERT INTO style_location(code,floor,side,updated_at,updated_by) VALUES(?,?,?,?,?)
++    ON CONFLICT(code) DO UPDATE SET floor=excluded.floor,side=excluded.side,updated_at=excluded.updated_at,updated_by=excluded.updated_by`,
++    code, floor, side, stamp, userId ?? null);
++  await run(env, `INSERT INTO style_location_change(code,old_floor,old_side,new_floor,new_side,reason,changed_at,changed_by)
++    VALUES(?,?,?,?,?,?,?,?)`,
++    code, oldFloor, oldSide, floor, side, String(reason || '').trim().slice(0, 200), stamp, userId ?? null);
++  return {code, changed:true, from:{floor:oldFloor, side:oldSide}, to:{floor, side}};
++}
++
++// 货位管理页。第一次建资料时最费时间的是「把几千个款号填上楼层」，
++// 所以这里默认只列【还没设货位】的款号，并且支持勾选一批一次性设定。
++async function locationsPage(env, session, url) {
++  const q = String(url.searchParams.get('q') || '').trim();
++  const scope = url.searchParams.get('scope') === 'all' ? 'all' : 'missing';
++  const clauses = ["p.code != ''"], params = [];
++  if (q) { clauses.push('(p.code LIKE ? OR p.category LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
++
++  const rows = await all(env, `
++    SELECT p.code code, MIN(p.category) category, COUNT(*) images,
++           COALESCE(l.floor,'') floor, COALESCE(l.side,'') side
++    FROM product p LEFT JOIN style_location l ON l.code = p.code
++    WHERE ${clauses.join(' AND ')}
++    GROUP BY p.code COLLATE NOCASE
++    ${scope === 'missing' ? "HAVING floor = '' AND side = ''" : ''}
++    ORDER BY p.code LIMIT 400`, ...params);
++
++  const totals = await first(env, `
++    SELECT COUNT(*) total, SUM(CASE WHEN placed THEN 1 ELSE 0 END) done FROM (
++      SELECT (COALESCE(l.floor,'') != '' OR COALESCE(l.side,'') != '') placed
++      FROM product p LEFT JOIN style_location l ON l.code = p.code
++      WHERE p.code != '' GROUP BY p.code COLLATE NOCASE)`);
++
++  const floors = await all(env, "SELECT DISTINCT floor value FROM style_location WHERE floor != '' ORDER BY floor");
++  const sides = await all(env, "SELECT DISTINCT side value FROM style_location WHERE side != '' ORDER BY side");
++  const changes = await all(env, `SELECT c.*, COALESCE(NULLIF(u.display_name,''),u.username) who
++    FROM style_location_change c LEFT JOIN admin_user u ON u.id = c.changed_by ORDER BY c.id DESC LIMIT 30`);
++
++  const list = rows.map(row => {
++    const placed = row.floor || row.side;
++    return `<label class="loc-row${placed ? ' is-placed' : ''}">
++      <input type="checkbox" name="code" value="${esc(row.code)}">
++      <span class="loc-code">${esc(row.code)}</span>
++      <span class="loc-cat">${esc(row.category || '未设料子')}</span>
++      <span class="loc-now">${placed ? esc([row.floor, row.side].filter(Boolean).join(' · ')) : '<em>未设货位</em>'}</span>
++    </label>`;
++  }).join('') || '<p class="region-empty">没有符合条件的款号。</p>';
++
++  const changeRows = changes.map(row => `<article class="loc-change">
++    <b>${esc(row.code)}</b>
++    <span>${esc([row.old_floor, row.old_side].filter(Boolean).join(' · ') || '（原来没有）')} → ${esc([row.new_floor, row.new_side].filter(Boolean).join(' · ') || '（清空）')}</span>
++    <small>${esc(row.changed_at)}${row.who ? ` · ${esc(row.who)}` : ''}${row.reason ? ` · ${esc(row.reason)}` : ''}</small>
++  </article>`).join('') || '<p class="region-empty">还没有搬货记录。</p>';
++
++  const done = Number(totals?.done) || 0, total = Number(totals?.total) || 0;
++
++  const body = `<header class="settings-topbar">
++  <a class="settings-back" href="/admin">← <span>返回产品管理</span></a>
++  <strong>货位管理</strong>
++  <a class="settings-catalog-link" href="/catalog">客户图库</a>
++</header>
++<main class="admin-shell users-page">
++  <div class="settings-heading">
++    <p class="eyebrow">LOCATIONS</p>
++    <h1>货位：楼层 · 左右</h1>
++    <p>货位跟着<b>款号</b>走，一个款号一条。搬货只要改这一条，所有照片、所有色号都跟着变。
++       <b>客户看不到这里的任何内容。</b></p>
++    <p class="loc-progress"><b>${done}</b> / ${total} 个款号已设货位</p>
++  </div>
++
++  <section class="settings-section">
++    <form method="get" class="loc-filter">
++      <input name="q" value="${esc(q)}" placeholder="搜款号或面料" aria-label="搜索">
++      <input type="hidden" name="scope" value="${scope}">
++      <button class="button button--ghost button--small">搜索</button>
++      <a class="button button--ghost button--small" href="/admin/locations?scope=${scope === 'missing' ? 'all' : 'missing'}${q ? `&q=${encodeURIComponent(q)}` : ''}">
++        ${scope === 'missing' ? '显示全部款号' : '只看未设货位'}</a>
++    </form>
++
++    <form method="post" class="loc-bulk">
++      <input type="hidden" name="csrf_token" value="${session.csrf}">
++      <input type="hidden" name="action" value="bulk">
++      <div class="loc-bulk-bar">
++        <label>楼层<input name="floor" list="dl-floors" placeholder="例如 1楼" autocomplete="off"></label>
++        <label>位置<input name="side" list="dl-sides" placeholder="例如 左" autocomplete="off"></label>
++        <label>原因<input name="reason" placeholder="例如 初次建档 / 搬货" autocomplete="off"></label>
++        <button class="button button--dark">设定选中的款号</button>
++      </div>
++      <p class="rule-example">勾选下面的款号，填好楼层和位置，点一次就全部设定。留空楼层和位置 = 清除货位。</p>
++      <div class="loc-list">${list}</div>
++    </form>
++  </section>
++
++  <section class="settings-section">
++    <h2>最近搬货记录</h2>
++    <div class="loc-changes">${changeRows}</div>
++  </section>
++</main>
++<datalist id="dl-floors">${floors.map(f => `<option value="${esc(f.value)}"></option>`).join('')}</datalist>
++<datalist id="dl-sides">${sides.map(s => `<option value="${esc(s.value)}"></option>`).join('')}</datalist>`;
++
++  return response(base('货位管理 · 库存图记', body, session.csrf));
++}
++
++// 给拿货小程序读货位用。只返回 款号 → 楼层/位置，不含图片、价格、客户任何信息。
++async function styleLocationsApi(request, env) {
++  const token = String(env.LOCATION_TOKEN || '');
++  if (token.length < 24) return json({error:'货位接口未启用'}, 503);
++  const given = enc.encode(String(request.headers.get('Authorization') || ''));
++  const expected = enc.encode(`Bearer ${token}`);
++  if (given.length !== expected.length || !crypto.subtle.timingSafeEqual(given, expected)) return json({error:'无权限'}, 401);
++  const items = await all(env, "SELECT code,floor,side,updated_at FROM style_location WHERE floor != '' OR side != '' ORDER BY code");
++  return json({ok:true, count:items.length, items});
++}
++
+ export default {
+   async fetch(request, env) {
+     const url = new URL(request.url), path = url.pathname, method = request.method.toUpperCase();
+@@ -981,6 +1148,7 @@ export default {
+       if (path === '/catalog' && method === 'GET') return catalogPage(request, env);
+       let match = path.match(/^\/product\/(\d+)$/); if (match && method === 'GET') return detailPage(request, env, Number(match[1]));
+       if (path === '/api/stock-sync' && method === 'PUT') return stockSync(request, env);
++      if (path === '/api/style-locations' && method === 'GET') return styleLocationsApi(request, env);
+       match = path.match(/^\/media\/(original|thumb)\/(.+)$/); if (match && method === 'GET') return serveMedia(request, env, decodeURIComponent(match[2]), match[1]==='thumb');
+ 
+       if (path === '/login' && method === 'GET') { const auth=await currentUser(request,env); return auth.user?redirect('/admin'):loginPage(request,env); }
+@@ -1058,6 +1226,16 @@ export default {
+         return redirect('/admin/code-rules');
+       }
+ 
++      if (path === '/admin/locations' && method === 'GET') { if(!owner) return response('无权限',403); return locationsPage(env,session,url); }
++      if (path === '/admin/locations' && method === 'POST') {
++        if(!owner) return response('无权限',403);
++        const form=await request.formData();
++        if(!validCsrf(request,session,String(form.get('csrf_token')||''))) return response('请求已过期',403);
++        const codes=form.getAll('code').map(value=>String(value||'').trim()).filter(Boolean);
++        const floor=String(form.get('floor')||''), side=String(form.get('side')||''), reason=String(form.get('reason')||'');
++        for(const code of codes.slice(0,400)) await setStyleLocation(env,code,floor,side,reason,session.uid);
++        return redirect('/admin/locations'+(form.get('scope')==='all'?'?scope=all':''));
++      }
+       if (path === '/admin/upload' && method === 'POST') {
+         if(!owner) return response('无权限',403); const form=await request.formData(); if(!validCsrf(request,session,String(form.get('csrf_token')||''))) return response('请求已过期',403);
+         const rules = await codeRules(env);
