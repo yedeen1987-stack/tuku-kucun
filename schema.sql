@@ -51,11 +51,17 @@ CREATE TABLE IF NOT EXISTS picking_item (
   taken_qty REAL NOT NULL DEFAULT 0,        -- 已拿几卷。由 picking_event 推出来的当前值。
   taken_at TEXT,
   taken_by INTEGER,
+  item_uuid TEXT,                           -- 本地生成的条目 id，回执靠它对回本地记录
+  done INTEGER NOT NULL DEFAULT 0,          -- 工人按了「完成」。拿齐和缺货都走这一个按钮：
+  done_at TEXT,                             --   taken_qty >= qty 是拿齐
+  done_by INTEGER,                          --   taken_qty <  qty 是缺货，差额 = qty - taken_qty
+  -- 以后要做米数时在这里加 meters_json，不用改现有列
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   FOREIGN KEY(list_id) REFERENCES picking_list(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_item_list ON picking_item(list_id, sort_order, id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_item_uuid ON picking_item(item_uuid);
 
 -- 只追加的操作流水。工人每次点「已拿 / 撤销」写一条。
 -- client_uuid 是手机端生成的，唯一约束 = 断网重发不会重复记账。

@@ -136,8 +136,8 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* ---------- 工人手机端 ---------- */
 .picker { background: #0f1115; }
 .picker .wrap { padding: .75rem .75rem 4rem; }
-.pick-progress { font-size: 1.1rem; color: #94a3b8; margin: .25rem 0 1rem; }
-.pick-progress b { color: #fff; font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.pick-progress { display: flex; gap: 1.25rem; flex-wrap: wrap; font-size: .95rem; color: #94a3b8; margin: .25rem 0 1rem; }
+.pick-progress b { color: #fff; font-size: 1.5rem; font-variant-numeric: tabular-nums; margin-right: .15rem; }
 .picker .list-row { background: #1a1e25; border-color: #2a2f38; color: #f1f5f9; }
 .picker .list-row small { color: #94a3b8; }
 .picker .empty { color: #94a3b8; }
@@ -167,10 +167,26 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .pick-qty { color: #94a3b8; font-size: .9rem; font-variant-numeric: tabular-nums; }
 .pick-qty b { color: #fff; font-size: 1.05rem; }
 
-.pick-actions { grid-column: 2; display: flex; gap: .5rem; margin-top: .3rem; }
-.btn-toggle { flex: 1 1 auto; min-height: 56px; background: #2563eb; border-color: #2563eb; color: #fff; font-size: 1.05rem; }
-.is-done .btn-toggle { background: #166534; border-color: #166534; }
-.btn-step { flex: 0 0 56px; min-height: 56px; background: #262c35; border-color: #3a424e; color: #fff; font-size: 1.4rem; }
+.pick-need { color: #94a3b8; font-size: .9rem; }
+.pick-need b { color: #fff; }
+.pick-actions { grid-column: 2; display: flex; align-items: center; gap: .4rem; margin-top: .4rem; flex-wrap: wrap; }
+.btn-step { flex: 0 0 52px; min-height: 56px; background: #262c35; border-color: #3a424e; color: #fff; font-size: 1.4rem; }
+.pick-count { min-width: 62px; text-align: center; font-variant-numeric: tabular-nums; }
+.pick-count b { color: #fff; font-size: 1.5rem; }
+.pick-count i { color: #94a3b8; font-style: normal; font-size: 1rem; }
+.btn-finish { flex: 1 1 110px; min-height: 56px; background: #2563eb; border-color: #2563eb; color: #fff; font-size: 1.05rem; }
+.is-done .btn-finish { background: #166534; border-color: #166534; }
+.is-short .btn-finish { background: #b45309; border-color: #b45309; }
+.pick-card.is-short { background: #3a2a10; border-color: #7c4a06; }
+
+/* 缺货确认 */
+.confirm { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.75); display: grid; place-items: center; padding: 1.25rem; }
+.confirm-card { width: min(100%, 360px); background: #1a1e25; border: 1px solid #2a2f38; border-radius: var(--radius); padding: 1.25rem; color: #f1f5f9; }
+.confirm-card strong { display: block; font-size: 1.25rem; margin-bottom: .4rem; }
+.confirm-card p { color: #cbd5e1; margin: 0 0 1.1rem; }
+.confirm-actions { display: flex; gap: .6rem; }
+.confirm-actions .btn { flex: 1 1 auto; min-height: 52px; background: #262c35; border-color: #3a424e; color: #fff; }
+.btn-danger { background: #b45309 !important; border-color: #b45309 !important; }
 
 #sync-badge[data-state=ok] { background: #166534; }
 #sync-badge[data-state=sync] { background: #1d4ed8; }
@@ -210,3 +226,6 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .item-qty { order: 3; margin-left: 68px; }
   .qty-unit { display: none; }
 }
+
+.item-row.is-short { background: #fffbeb; border-color: #fde68a; }
+.short-flag { color: var(--warn); }

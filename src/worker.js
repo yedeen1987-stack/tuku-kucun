@@ -108,7 +108,9 @@ async function ensureSchema(env) {
       style TEXT NOT NULL DEFAULT '', color TEXT NOT NULL DEFAULT '', qty REAL NOT NULL DEFAULT 1,
       floor TEXT NOT NULL DEFAULT '', spot TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
       photo_key TEXT NOT NULL DEFAULT '', taken_qty REAL NOT NULL DEFAULT 0, taken_at TEXT, taken_by INTEGER,
+      item_uuid TEXT, done INTEGER NOT NULL DEFAULT 0, done_at TEXT, done_by INTEGER,
       sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_item_uuid ON picking_item(item_uuid)`,
     `CREATE INDEX IF NOT EXISTS idx_item_list ON picking_item(list_id, sort_order, id)`,
     `CREATE TABLE IF NOT EXISTS picking_event (id INTEGER PRIMARY KEY AUTOINCREMENT, item_id INTEGER NOT NULL,
       list_id INTEGER NOT NULL, action TEXT NOT NULL, qty REAL NOT NULL DEFAULT 0, user_id INTEGER,
@@ -117,6 +119,19 @@ async function ensureSchema(env) {
     `CREATE INDEX IF NOT EXISTS idx_event_list ON picking_event(list_id, id DESC)`
   ];
   await env.DB.batch(statements.map((sql) => env.DB.prepare(sql)));
+  // 增量列：老库升级用，列已存在会报错，忽略。
+  // done = 工人按了「完成」。拿齐和缺货都走这一个按钮：
+  // taken_qty >= qty 就是拿齐，taken_qty < qty 就是缺货，差额 = qty - taken_qty。
+  // item_uuid 是本地生成的，回执靠它对回本地的记录。
+  for (const sql of [
+    'ALTER TABLE picking_item ADD COLUMN item_uuid TEXT',
+    'ALTER TABLE picking_item ADD COLUMN done INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE picking_item ADD COLUMN done_at TEXT',
+    'ALTER TABLE picking_item ADD COLUMN done_by INTEGER',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_item_uuid ON picking_item(item_uuid)'
+  ]) {
+    try { await env.DB.prepare(sql).run(); } catch { /* 列已存在 */ }
+  }
   schemaReady = true;
 }
 
@@ -173,14 +188,15 @@ function setupPage(error = '') {
 // ---------- 进度计算 ----------
 function progressOf(items) {
   const total = items.length;
-  const done = items.filter((item) => item.taken_qty >= item.qty).length;
+  const done = items.filter((item) => item.done).length;
   return {total, done, allDone: total > 0 && done === total};
 }
 
 // ---------- 你（owner）：拣货单总览 ----------
 async function ownerHome(env, user, session) {
   const lists = await all(env,
-    `SELECT l.*, COUNT(i.id) total, SUM(CASE WHEN i.taken_qty >= i.qty THEN 1 ELSE 0 END) done
+    `SELECT l.*, COUNT(i.id) total, SUM(CASE WHEN i.done THEN 1 ELSE 0 END) done,
+            SUM(CASE WHEN i.done AND i.taken_qty < i.qty THEN 1 ELSE 0 END) short
      FROM picking_list l LEFT JOIN picking_item i ON i.list_id = l.id
      WHERE l.status != 'cancelled' GROUP BY l.id ORDER BY
        CASE l.status WHEN 'sent' THEN 0 WHEN 'draft' THEN 1 ELSE 2 END, l.id DESC LIMIT 100`);
@@ -191,7 +207,8 @@ async function ownerHome(env, user, session) {
     return `<a class="list-row" href="/list/${list.id}">
       <div class="list-row-main">
         <strong>${esc(list.customer_label)}</strong>
-        <small>拣货单 ${esc(list.code)} · ${STATUS_TEXT[list.status] || list.status}</small>
+        <small>拣货单 ${esc(list.code)} · ${STATUS_TEXT[list.status] || list.status}${
+          Number(list.short) ? ` · <b class="short-flag">缺货 ${Number(list.short)}</b>` : ''}</small>
       </div>
       <div class="list-row-progress">
         <span class="count ${done === total && total ? 'is-done' : ''}">${done}/${total}</span>
@@ -257,11 +274,13 @@ async function listPage(env, user, session, listId) {
   const items = await all(env, 'SELECT * FROM picking_item WHERE list_id=? ORDER BY sort_order, id', listId);
   const hints = await suggestions(env);
   const progress = progressOf(items);
+  const shortCount = items.filter((item) => item.done && item.taken_qty < item.qty).length;
 
   const itemRows = items.map((item) => {
-    const done = item.taken_qty >= item.qty;
+    const done = !!item.done;
+    const short = done && item.taken_qty < item.qty;
     const place = [item.floor, item.spot].filter(Boolean).join(' · ');
-    return `<article class="item-row ${done ? 'is-done' : ''}">
+    return `<article class="item-row ${short ? 'is-short' : done ? 'is-done' : ''}">
       ${item.photo_key
         ? `<a class="item-thumb" href="/media/${encodeURIComponent(item.photo_key)}" target="_blank" rel="noopener">
              <img src="/media/${encodeURIComponent(item.photo_key)}" alt="" loading="lazy"></a>`
@@ -276,7 +295,9 @@ async function listPage(env, user, session, listId) {
         <button type="button" class="qty-btn" data-qty-step="1" aria-label="多一卷">＋</button>
         <span class="qty-unit">卷</span>
       </div>
-      <span class="item-state" data-state-for="${item.id}">${done ? '已拿' : `${item.taken_qty}/${item.qty}`}</span>
+      <span class="item-state" data-state-for="${item.id}">${
+        short ? `缺 ${Math.round((item.qty - item.taken_qty) * 1000) / 1000}`
+        : done ? '已拿' : `${item.taken_qty}/${item.qty}`}</span>
       <form method="post" action="/api/items/${item.id}/delete" class="item-del"
             onsubmit="return confirm('删除这一项？')">
         <input type="hidden" name="csrf_token" value="${session.csrf}">
@@ -298,7 +319,8 @@ async function listPage(env, user, session, listId) {
 <main class="wrap">
   <div class="page-head">
     <h1>${esc(list.customer_label)}</h1>
-    <span class="muted">单号 ${esc(list.code)} · 已拿 <b id="list-done">${progress.done}</b>/${progress.total}</span>
+    <span class="muted">单号 ${esc(list.code)} · 完成 <b id="list-done">${progress.done}</b>/${progress.total}${
+      shortCount ? ` · <b class="short-flag">缺货 ${shortCount} 项</b>` : ''}</span>
   </div>
   ${list.note ? `<p class="note-line">${esc(list.note)}</p>` : ''}
 
@@ -389,7 +411,8 @@ async function usersPage(env, session, error = '') {
 async function pickerHome(env, user, session) {
   const lists = await all(env,
     `SELECT l.id, l.code, l.customer_label, COUNT(i.id) total,
-            SUM(CASE WHEN i.taken_qty >= i.qty THEN 1 ELSE 0 END) done
+            SUM(CASE WHEN i.done THEN 1 ELSE 0 END) done,
+            SUM(CASE WHEN i.done AND i.taken_qty < i.qty THEN 1 ELSE 0 END) short
      FROM picking_list l LEFT JOIN picking_item i ON i.list_id = l.id
      WHERE l.status = 'sent' GROUP BY l.id ORDER BY l.id DESC`);
 
@@ -397,7 +420,8 @@ async function pickerHome(env, user, session) {
     const total = Number(list.total) || 0, done = Number(list.done) || 0;
     const pct = total ? Math.round((done / total) * 100) : 0;
     return `<a class="list-row" href="/w/${list.id}">
-      <div class="list-row-main"><strong>${esc(list.customer_label)}</strong><small>Nº ${esc(list.code)}</small></div>
+      <div class="list-row-main"><strong>${esc(list.customer_label)}</strong><small>Nº ${esc(list.code)}${
+        Number(list.short) ? ` · falta ${Number(list.short)}` : ''}</small></div>
       <div class="list-row-progress">
         <span class="count ${done === total && total ? 'is-done' : ''}">${done}/${total}</span>
         <span class="bar"><i style="width:${pct}%"></i></span>
@@ -433,33 +457,42 @@ async function pickerList(env, user, session, listId) {
   }
 
   const sections = [...groups.entries()].map(([floor, rows]) => {
-    const doneCount = rows.filter((item) => item.taken_qty >= item.qty).length;
+    const doneCount = rows.filter((item) => item.done).length;
     const cards = rows.map((item) => {
-      const done = item.taken_qty >= item.qty;
+      const done = !!item.done;
+      const short = done && item.taken_qty < item.qty;
       const photo = item.photo_key ? `/media/${encodeURIComponent(item.photo_key)}` : '';
-      return `<article class="pick-card ${done ? 'is-done' : ''}" data-item="${item.id}" data-qty="${item.qty}" data-taken="${item.taken_qty}">
+      // 款号可以是空的（无编号的款）：显示破折号，工人靠照片认
+      const code = item.style ? esc(item.style) : '—';
+      const gap = Math.round((item.qty - item.taken_qty) * 1000) / 1000;
+      return `<article class="pick-card${done ? (short ? ' is-short' : ' is-done') : ''}"
+        data-item="${item.id}" data-qty="${item.qty}" data-taken="${item.taken_qty}" data-done="${done ? 1 : 0}">
         ${photo
           ? `<button class="pick-photo" type="button" data-zoom="${esc(photo)}"><img src="${esc(photo)}" alt="" loading="lazy"></button>`
           : '<span class="pick-photo pick-photo--empty">sem foto</span>'}
         <div class="pick-body">
-          <strong class="pick-code">${esc(item.style || '—')}${item.color ? ` · ${esc(item.color)}` : ''}</strong>
+          <strong class="pick-code">${code}${item.color ? ` · ${esc(item.color)}` : ''}</strong>
           <span class="pick-place">${esc([item.floor, item.spot].filter(Boolean).join(' · ') || '—')}</span>
           ${item.note ? `<span class="pick-note">${esc(item.note)}</span>` : ''}
-          <span class="pick-qty"><b data-taken-label>${item.taken_qty}</b> / ${item.qty} rolos</span>
+          <span class="pick-need">Precisa <b>${item.qty}</b> rolos</span>
         </div>
         <div class="pick-actions">
-          ${item.qty > 1 ? '<button class="btn btn-step" type="button" data-step="-1" aria-label="menos">−</button>' : ''}
-          <button class="btn btn-toggle" type="button" data-toggle>${done ? 'Peguei ✓' : 'Peguei'}</button>
-          ${item.qty > 1 ? '<button class="btn btn-step" type="button" data-step="1" aria-label="mais">+</button>' : ''}
+          <button class="btn btn-step" type="button" data-step="-1" aria-label="menos">−</button>
+          <span class="pick-count"><b data-taken-label>${item.taken_qty}</b><i data-need>/${item.qty}</i></span>
+          <button class="btn btn-step" type="button" data-step="1" aria-label="mais">+</button>
+          <button class="btn btn-finish" type="button" data-finish>${done ? (short ? `Faltou ${gap}` : 'Pronto ✓') : 'Pronto'}</button>
         </div>
       </article>`;
     }).join('');
+
     return `<section class="floor-group">
       <h2 class="floor-head"><span>${esc(floor)}</span><small data-floor-count>${doneCount}/${rows.length}</small></h2>
       ${cards}</section>`;
   }).join('');
 
-  const progress = progressOf(items);
+  const doneItems = items.filter((item) => item.done).length;
+  const rollsNeed = Math.round(items.reduce((sum, item) => sum + item.qty, 0) * 1000) / 1000;
+  const rollsGot = Math.round(items.reduce((sum, item) => sum + item.taken_qty, 0) * 1000) / 1000;
 
   return response(base({
     title: `${list.customer_label} · ${list.code}`,
@@ -472,10 +505,23 @@ async function pickerList(env, user, session, listId) {
   <nav><span class="badge" id="sync-badge" data-state="ok">online</span></nav>
 </header>
 <main class="wrap">
-  <p class="pick-progress"><b id="progress-done">${progress.done}</b> / ${progress.total}</p>
+  <p class="pick-progress">
+    <span><b id="progress-items">${doneItems}</b> / ${items.length} modelos</span>
+    <span><b id="progress-rolls">${rollsGot}</b> / ${rollsNeed} rolos</span>
+  </p>
   ${sections || '<p class="empty">Lista vazia.</p>'}
 </main>
-<div class="zoom" id="zoom" hidden><img alt=""><button type="button" class="zoom-close" aria-label="fechar">×</button></div>`}));
+<div class="zoom" id="zoom" hidden><img alt=""><button type="button" class="zoom-close" aria-label="fechar">×</button></div>
+<div class="confirm" id="short-confirm" hidden>
+  <div class="confirm-card">
+    <strong id="short-title"></strong>
+    <p id="short-text"></p>
+    <div class="confirm-actions">
+      <button type="button" class="btn" data-cancel>Voltar</button>
+      <button type="button" class="btn btn-danger" data-ok></button>
+    </div>
+  </div>
+</div>`}));
 }
 
 // ---------- 照片 ----------
@@ -549,37 +595,44 @@ async function applyEvents(env, userId, events) {
   for (const event of Array.isArray(events) ? events.slice(0, 200) : []) {
     const itemId = Number(event?.item_id);
     const uuid = String(event?.client_uuid || '').slice(0, 64);
-    const action = event?.action === 'untaken' ? 'untaken' : 'taken';
+    // qty   = 改数量（点 − ＋）
+    // done  = 按「完成」。拿齐和缺货是同一个动作，差额由 qty - taken_qty 算出来。
+    // undone= 撤销完成，回到可继续拣的状态
+    const action = ['done', 'undone', 'qty'].includes(event?.action) ? event.action : 'qty';
     if (!Number.isInteger(itemId) || !uuid) continue;
 
-    const item = await first(env, 'SELECT id,list_id,qty FROM picking_item WHERE id=?', itemId);
+    const item = await first(env, 'SELECT id,list_id,qty,taken_qty,done FROM picking_item WHERE id=?', itemId);
     if (!item) continue;
 
-    // qty 是「这次操作之后的累计已拿数」，夹在 0..要求卷数 之间
-    let qty = Number(event?.qty);
-    if (!Number.isFinite(qty)) qty = action === 'taken' ? item.qty : 0;
-    qty = Math.max(0, Math.min(item.qty, Math.round(qty * 1000) / 1000));
+    let taken = Number(event?.qty);
+    if (!Number.isFinite(taken)) taken = item.taken_qty;
+    taken = Math.max(0, Math.min(item.qty, Math.round(taken * 1000) / 1000));
+    const done = action === 'done' ? 1 : action === 'undone' ? 0 : item.done;
 
     const stamp = now();
     const inserted = await run(env,
       `INSERT OR IGNORE INTO picking_event(item_id,list_id,action,qty,user_id,client_uuid,created_at)
-       VALUES(?,?,?,?,?,?,?)`, itemId, item.list_id, action, qty, userId, uuid, stamp);
+       VALUES(?,?,?,?,?,?,?)`, itemId, item.list_id, action, taken, userId, uuid, stamp);
 
     if (inserted.meta?.changes) {
-      await run(env, 'UPDATE picking_item SET taken_qty=?, taken_at=?, taken_by=? WHERE id=?',
-        qty, qty > 0 ? stamp : null, qty > 0 ? userId : null, itemId);
+      await run(env,
+        'UPDATE picking_item SET taken_qty=?, taken_at=?, taken_by=?, done=?, done_at=?, done_by=? WHERE id=?',
+        taken, taken > 0 ? stamp : null, taken > 0 ? userId : null,
+        done, done ? stamp : null, done ? userId : null, itemId);
     }
-    const current = await first(env, 'SELECT taken_qty FROM picking_item WHERE id=?', itemId);
-    applied.push({item_id: itemId, client_uuid: uuid, taken_qty: current?.taken_qty ?? qty});
+    const current = await first(env, 'SELECT taken_qty,qty,done FROM picking_item WHERE id=?', itemId);
+    applied.push({item_id: itemId, client_uuid: uuid,
+      taken_qty: current?.taken_qty ?? taken, done: current?.done ? 1 : 0,
+      shortage: current?.done && current.taken_qty < current.qty
+        ? Math.round((current.qty - current.taken_qty) * 1000) / 1000 : 0});
   }
   return applied;
 }
 
-// ---------- 接收图库推来的客户照片 ----------
-// 图库「拍照找货」确认完之后，先把客户实拍照片逐张传到这里拿 photo_key，
-// 再带着这些 key 调 /api/import 建单。工人端看到的就是客户这张照片，
-// 不是图库里的标准商品图。
-async function receivePhoto(request, env) {
+// ---------- 回执：给本地主系统轮询 ----------
+// 本地不开公网入口，所以是本地【主动来拿】，不是线上往本地推。
+// since 传上次拿到的时间戳，只返回之后有变动的单，省流量。
+async function receiptsApi(request, env, url) {
   const token = String(env.IMPORT_TOKEN || '');
   if (token.length < 24) return json({error: '导入接口未启用'}, 503);
   const given = enc.encode(String(request.headers.get('Authorization') || ''));
@@ -587,16 +640,42 @@ async function receivePhoto(request, env) {
   if (given.length !== expected.length || !crypto.subtle.timingSafeEqual(given, expected))
     return json({error: '无权限'}, 401);
 
-  const type = String(request.headers.get('Content-Type') || '').split(';')[0].trim();
-  const ext = PHOTO_TYPES[type];
-  if (!ext) return json({error: '照片格式只支持 JPG / PNG / WebP'}, 400);
-  const bytes = await request.arrayBuffer();
-  if (!bytes.byteLength) return json({error: '照片是空的'}, 400);
-  if (bytes.byteLength > MAX_PHOTO) return json({error: '照片太大'}, 400);
+  const since = String(url.searchParams.get('since') || '').slice(0, 40);
+  const lists = await all(env,
+    `SELECT l.id,l.code,l.customer_label,l.status,l.external_uuid,l.updated_at,
+            MAX(COALESCE(i.done_at, i.taken_at, l.updated_at)) last_event
+     FROM picking_list l LEFT JOIN picking_item i ON i.list_id = l.id
+     WHERE l.external_uuid IS NOT NULL GROUP BY l.id
+     HAVING ? = '' OR last_event > ? ORDER BY l.id`, since, since);
 
-  const key = `import/${randomId()}.${ext}`;
-  await env.PHOTOS.put(key, bytes, {httpMetadata: {contentType: type}});
-  return json({ok: true, photo_key: key});
+  const out = [];
+  for (const list of lists) {
+    const items = await all(env,
+      `SELECT item_uuid,style,color,qty,taken_qty,done,done_at,floor,spot FROM picking_item
+       WHERE list_id=? ORDER BY sort_order,id`, list.id);
+    const rows = items.map(item => ({
+      item_uuid: item.item_uuid || null,
+      style_code: item.style || null,
+      quantity_required: item.qty,
+      quantity_picked: item.taken_qty,
+      shortage: item.done && item.taken_qty < item.qty
+        ? Math.round((item.qty - item.taken_qty) * 1000) / 1000 : 0,
+      done: item.done ? true : false,
+      done_at: item.done_at,
+      floor_snapshot: item.floor, side_snapshot: item.spot
+    }));
+    out.push({
+      order_uuid: list.external_uuid, code: list.code, customer_label: list.customer_label,
+      status: list.status, last_event: list.last_event,
+      items_total: rows.length, items_done: rows.filter(r => r.done).length,
+      rolls_required: rows.reduce((sum, r) => sum + r.quantity_required, 0),
+      rolls_picked: rows.reduce((sum, r) => sum + r.quantity_picked, 0),
+      shortage_rolls: rows.reduce((sum, r) => sum + r.shortage, 0),
+      all_done: rows.length > 0 && rows.every(r => r.done),
+      items: rows
+    });
+  }
+  return json({ok: true, now: now(), count: out.length, orders: out});
 }
 
 // ---------- 给以后的本地系统用的导入接口 ----------
@@ -630,11 +709,12 @@ async function importList(request, env) {
     const [floor, spot] = await resolvePlace(env, style,
       cleanText(item?.floor, 40), cleanText(item?.spot, 40));
     await run(env,
-      `INSERT INTO picking_item(list_id,style,color,qty,floor,spot,note,photo_key,sort_order,created_at)
-       VALUES(?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO picking_item(list_id,style,color,qty,floor,spot,note,photo_key,item_uuid,sort_order,created_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
       listId, style, cleanText(item?.color, 40), cleanQty(item?.qty),
       floor, spot, cleanText(item?.note, 120),
-      String(item?.photo_key || '').slice(0, 200), order++, stamp);
+      String(item?.photo_key || '').slice(0, 200),
+      String(item?.uuid || '').slice(0, 64) || null, order++, stamp);
   }
   return json({ok: true, list_id: listId, code, count: items.length});
 }
@@ -652,6 +732,7 @@ export default {
       // 本地系统推拣货单（自带 token，不走登录）
       if (path === '/api/import' && method === 'PUT') return importList(request, env);
       if (path === '/api/photos' && method === 'POST') return receivePhoto(request, env);
+      if (path === '/api/receipts' && method === 'GET') return receiptsApi(request, env, url);
 
       const userCount = await first(env, 'SELECT COUNT(*) n FROM app_user');
       if (!userCount?.n) {
